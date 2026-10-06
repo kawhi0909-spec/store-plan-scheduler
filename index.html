@@ -1,0 +1,1021 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>店鋪方案排期工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+/* 版面：頂部深藍列 + 依填寫順序排列的白卡；權益狀態用綠／琥珀／紅 */
+:root{
+  --navy:#1E2A4C; --navy2:#34477A; --accent:#1E2A4C; --ink:#34477A; --bg:#F4F6FC; --card:#FFFFFF;
+  --green:#1E9E63; --green-soft:#E3F8EC; --amber:#B8860B; --amber-ink:#7A5A06; --amber-soft:#FBF1DC;
+  --red:#C2412D; --red-soft:#FBE6E2; --ice:#EAEFF9; --track:#E4E9F5; --dash:#B9C3DD;
+  --text:#1A2032; --muted:#667085; --line:#E1E6F2; --on-accent:#FFFFFF; --overlay:rgba(20,26,44,.45);
+  --shadow:0 4px 16px rgba(30,42,76,.08); color-scheme:light;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"PingFang TC","Microsoft JhengHei",sans-serif}
+button,input,select{font:inherit;color:inherit}
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:linear-gradient(90deg,var(--navy),var(--navy2));color:#fff;padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.topbar .eyebrow{font-size:11px;letter-spacing:.18em;color:#B9C7EA}
+.topbar h1{margin:0;font-size:20px}
+.topbar .actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:0;border-radius:8px;padding:8px 14px;cursor:pointer;background:var(--ice);color:var(--ink);font-weight:600}
+.btn:hover{filter:brightness(.96)}
+.topbar .btn{background:rgba(255,255,255,.14);color:#fff}
+.topbar .btn.primary{background:#1E9E63;color:#fff}
+.btn.primary{background:var(--accent);color:var(--on-accent)}
+.btn.big{padding:12px 28px;font-size:16px}
+.btn.ghost{background:transparent;color:var(--muted);padding:4px 8px}
+.btn.ghost:hover{color:var(--red);background:var(--red-soft)}
+.btn.add{background:transparent;border:1px dashed var(--dash);color:var(--ink);width:100%;padding:7px}
+main{max-width:1280px;margin:0 auto;padding:20px 16px 80px}
+.card{background:var(--card);border-radius:12px;box-shadow:var(--shadow);padding:20px;margin-bottom:16px;scroll-margin-top:84px}
+.item-card{scroll-margin-top:84px}
+.card h2{margin:0 0 14px;font-size:16px;display:flex;align-items:center;gap:8px}
+.card h2 .num{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--on-accent);font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.field input,.field select{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card)}
+.field input[readonly]{background:var(--bg);color:var(--muted)}
+input:focus,select:focus{outline:2px solid #9DB1E6;outline-offset:-1px}
+.hint{font-size:12px;color:var(--muted);margin-top:4px}
+.seg{display:inline-flex;background:var(--track);border-radius:9px;padding:3px;gap:2px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;padding:6px 14px;border-radius:7px;cursor:pointer;color:var(--muted);font-weight:600}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.two{display:grid;grid-template-columns:3fr 2fr;gap:16px}
+@media (max-width:820px){.two{grid-template-columns:1fr}}
+.list-row{display:grid;gap:8px;align-items:center;margin-bottom:8px}
+.list-row.work{grid-template-columns:26px 1fr 1.4fr 32px}
+.list-row.region{grid-template-columns:26px 1fr 32px}
+.list-row input{border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:100%;min-width:0;background:var(--card)}
+.tag{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;background:var(--ice);color:var(--ink);font-weight:700;font-size:12px}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:18px}
+.opt-title{font-size:13px;font-weight:600;margin-bottom:6px}
+.run-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.notice{border-radius:10px;padding:10px 14px;margin:10px 0;font-size:13px}
+.notice.warn{background:var(--amber-soft);color:var(--amber-ink)}
+.notice.err{background:var(--red-soft);color:var(--red)}
+.notice.info{background:var(--ice);color:var(--ink)}
+.notice ul{margin:4px 0 0;padding-left:20px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:-4px 0 16px}
+.tabs button{border:0;background:none;padding:10px 16px;cursor:pointer;color:var(--muted);font-weight:600;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.on{color:var(--ink);border-color:var(--ink)}
+table{border-collapse:collapse;width:100%}
+.summary td,.summary th{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left}
+.summary th{font-size:12px;color:var(--muted);font-weight:600}
+.summary td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{white-space:nowrap}
+.summary a{color:var(--ink);text-decoration:none;font-weight:600}
+.pill{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600}
+.pill.ok{background:var(--green-soft);color:var(--green)}
+.pill.under{background:var(--amber-soft);color:var(--amber)}
+.pill.over{background:var(--red-soft);color:var(--red)}
+.item-card{border-top:1px solid var(--line);padding:18px 0 6px}
+.item-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.item-head h3{margin:0;font-size:15px}
+.item-head .sub{font-size:12px;color:var(--muted)}
+.usage{font-size:13px;font-variant-numeric:tabular-nums}
+.bar{height:6px;border-radius:99px;background:var(--track);margin:8px 0 10px;overflow:hidden}
+.bar span{display:block;height:100%;border-radius:99px;background:var(--green)}
+.bar.under span{background:var(--amber)} .bar.over span{background:var(--red)}
+.entries th{font-size:12px;color:var(--muted);font-weight:600;text-align:left;padding:4px 6px}
+.entries td{padding:3px 6px;border-top:1px solid var(--line)}
+.entries select,.entries input{border:1px solid var(--line);border-radius:6px;padding:4px 6px;width:100%;background:var(--card)}
+.entries td.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;width:80px}
+.entries tr.bad td{background:var(--red-soft)}
+.entries-wrap{overflow-x:auto}
+.entries{min-width:620px}
+.item-warn{font-size:12px;color:var(--red);margin:6px 0}
+.item-note{font-size:13px;font-weight:600;color:var(--amber-ink);background:var(--amber-soft);border-left:4px solid var(--amber);border-radius:6px;padding:8px 12px;margin:8px 0}
+.summary tr.flag td{background:var(--amber-soft)}
+.pill.flag{background:var(--amber);color:#fff;margin-left:6px}
+.jump{background:none;border:0;padding:0;color:var(--ink);font-weight:700;text-decoration:underline;cursor:pointer}
+.notice.warn ul{margin-top:6px}
+.add-row{margin:8px 0 4px;max-width:200px}
+.ai-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-top:6px}
+.tag.wide{width:auto;padding:0 8px;white-space:nowrap}
+.ai-slot{display:flex;align-items:center;gap:8px;min-width:0}
+.ai-slot select{flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:5px 6px;background:var(--card)}
+.info-table td,.info-table th{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:13px}
+.info-table th{color:var(--muted);font-size:12px}
+.info-table td:nth-child(2){white-space:nowrap;font-weight:600}
+.gridwrap{overflow:auto;max-height:75vh;border-radius:8px;border:1px solid var(--line)}
+.mgrid{border-collapse:separate;border-spacing:0;font-size:12px}
+.mgrid th,.mgrid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 8px;vertical-align:top;white-space:pre-line;min-width:120px}
+.mgrid thead th{position:sticky;top:0;background:var(--navy);color:#fff;z-index:2;text-align:center}
+.mgrid .sticky{position:sticky;left:0;background:var(--card);z-index:1;min-width:150px;font-weight:600}
+.mgrid thead .sticky{z-index:3;background:var(--navy)}
+.mgrid td.cat{background:var(--ice);font-weight:700;color:var(--ink)}
+.empty{color:var(--muted);text-align:center;padding:40px 0}
+.mono{font-variant-numeric:tabular-nums}
+.modal-bg{position:fixed;inset:0;background:var(--overlay);display:grid;place-items:center;z-index:50;padding:16px}
+.modal{background:var(--card);color:var(--text);border-radius:12px;box-shadow:var(--shadow);padding:20px;max-width:420px;width:100%}
+.modal p{margin:0 0 16px;white-space:pre-line}
+.modal .row{display:flex;justify-content:flex-end;gap:8px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:60;max-width:calc(100% - 32px);border-radius:10px;padding:10px 16px;box-shadow:var(--shadow);font-size:13px}
+.toast.info{background:var(--ice);color:var(--ink)} .toast.err{background:var(--red-soft);color:var(--red)}
+@media (max-width:520px){.topbar{padding:12px 16px}.topbar .actions{margin-left:0}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <div class="eyebrow">100室內設計・店鋪方案</div>
+    <h1>店鋪方案排期工具</h1>
+  </div>
+  <div class="actions">
+    <button class="btn" id="btnLoad">讀檔</button>
+    <input type="file" id="fileLoad" accept=".json,application/json" hidden>
+    <button class="btn" id="btnSave">存檔</button>
+    <button class="btn primary" id="btnExport">匯出 Excel</button>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <h2><span class="num">1</span>基本資料</h2>
+    <div class="grid">
+      <div class="field"><label>公司名稱</label><input id="fCompany" placeholder="請輸入公司全名"></div>
+      <div class="field"><label>負責業務</label><input id="fSales" placeholder="請輸入業務名字"></div>
+      <div class="field"><label>合約開始日</label><input id="fStart" type="date"></div>
+      <div class="field"><label>合約結束日（自動，共365天）</label><input id="fEnd" readonly></div>
+    </div>
+    <div style="margin-top:16px">
+      <div class="opt-title">方案</div>
+      <div class="seg" id="planSeg"></div>
+    </div>
+    <div class="hint" id="windowHint"></div>
+  </section>
+
+  <section class="two">
+    <div class="card">
+      <h2><span class="num">2</span>客戶作品</h2>
+      <div id="worksList"></div>
+      <button class="btn add" id="addWork">＋ 新增作品</button>
+      <div class="hint">連結可以之後再補；排在越前面的作品，優先用在有作品數上限的版位。</div>
+    </div>
+    <div class="card">
+      <h2><span class="num">3</span>門市所在縣市</h2>
+      <div id="regionsList"></div>
+      <button class="btn add" id="addRegion">＋ 新增區域</button>
+      <datalist id="cityList"></datalist>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">4</span>排程設定</h2>
+    <div class="opts">
+      <div><div class="opt-title">置頂類（作品／公司列表置頂）</div><div class="seg" data-opt="pinMode"></div></div>
+      <div><div class="opt-title">品牌曝光類的時間分布</div><div class="seg" data-opt="expoMode"></div></div>
+      <div><div class="opt-title">品牌曝光類之間</div><div class="seg" data-opt="expoStagger"></div></div>
+    </div>
+    <div class="run-row">
+      <button class="btn primary big" id="btnRun">一鍵自動排程</button>
+      <span class="hint" style="margin:0">從合約開始日後的第一個週一起排，以週為單位，把權益全部用完。</span>
+    </div>
+    <div id="runMsg"></div>
+  </section>
+
+  <section class="card" id="result">
+    <div class="tabs" id="tabs">
+      <button data-tab="detail" class="on">權益明細（可微調）</button>
+      <button data-tab="grid">月份總覽</button>
+    </div>
+    <div id="resultBody"></div>
+  </section>
+</main>
+
+<script>
+/* 排期表範本：數字廣告店鋪方案排期表.xlsx 的四個方案頁（入門／標準／加強／旗艦版_範本），匯出時直接套用 */
+const PLAN_TEMPLATE_B64 = "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";
+</script>
+<script>
+/* ================= 方案定義 ================= */
+const E365 = '正式開始後默認展示365天，無需安排';
+const F_WORK = '1.每次曝光之作品名稱＆連結（可重複）\n2.每次作品曝光之縣市（全台縣市皆可選）';
+const F_CO = '1.每次曝光之縣市（全台縣市皆可選）';
+const F_BANNER = '1.每次曝光之作品連結＆標題（可重複）\n2.每次作品曝光之縣市（全台縣市皆可選）';
+const E_LIST = '正式開始後默認365天使用，根據實際需求安排提交審核', F_LIST = '設計公司由後台上架';
+const E_BADGE = '與作品置頂/公司列表置頂排期保持一致';
+const E_591 = '展示將關聯公司列表、作品列表的使用設定，兩者有其一使用後，公司的信息卡片將在591入口內優先被推薦';
+const E_REVIEW = '平台提供評價表單連結，公司轉給想要邀約的業主進行填寫，100審核通過後將展示';
+const E_EDIT = '由100編輯團隊對接，可一次性提供，或分批提供';
+const F_UNBOX = '編輯確認資訊，以下資料準備：\n①裝修前照片\n②施工過程照片\n③裝修前＆後平面圖';
+const E_SOCIAL = 'FB/IG貼文連動發布，由100編輯對接安排';
+
+const info = (name, qty, desc, mat = 'x') => ({ kind: 'info', name, qty, desc, mat });
+const pin = (key, name, type, total, desc) =>
+  ({ kind: 'pin', key, name, type, total, qty: total + '次', desc, mat: type === 'work' ? F_WORK : F_CO });
+const expo = (key, name, type, total, chunks, max, banner) => {
+  const L = total / chunks;
+  let mat = banner ? F_BANNER : (type === 'work' ? F_WORK : F_CO);
+  if (max) mat += `\n(最多可提供${max}個${type === 'work' ? '作品' : '縣市'})`;
+  const who = type === 'work' ? '1個作品' : '公司';
+  return { kind: 'expo', key, name, type, total, chunks, max, qty: total + '周', mat,
+    desc: `使用範例：${who}在xx市每次曝光${L}週，共${chunks}次` };
+};
+const brand5 = (total, chunks, max, rankName) => [
+  expo('hpWork', '首頁-熱門作品（PC）', 'work', total, chunks, max),
+  expo('hpCo', '首頁-熱門公司（PC）', 'company', total, chunks, max),
+  expo('srCo', '搜尋-熱門公司推薦', 'company', total, chunks, max),
+  expo('srWork', '搜尋-熱門作品推薦', 'work', total, chunks, max),
+  expo('rank', rankName, 'company', total, chunks, max),
+];
+const banners = (total, chunks, max, appTotal, appChunks, appMax) => [
+  expo('focus', '首頁-焦點大圖', 'work', total, chunks, max, true),
+  expo('carousel', '搜尋-輪播廣告', 'work', total, chunks, max, true),
+  expo('appOpen', '開機廣告（APP）', 'work', appTotal, appChunks, appMax, true),
+  expo('appTop', '首頁-頂部橫幅（APP）', 'work', appTotal, appChunks, appMax, true),
+];
+const ai = n => ({ kind: 'ai', key: 'ai', name: 'AI環景作品', count: n, qty: n + '個',
+  desc: `${n}個曝光作品名稱+連結`, mat: '1.作品名稱&連結，建議首選【代表作】\n可一次全部提供或分批提供' });
+const push = n => ({ kind: 'push', key: 'push', name: 'APP推播', count: n, qty: n + '則',
+  desc: '每月安排1個作品提供作品名稱+連結', mat: '編輯確認推播資訊' });
+
+const PLANS = {
+  '入門版': [
+    { cat: '列表優先置頂', rows: [
+      info('置頂優先權', '排在免費版前', E365),
+      pin('pinWork', '作品列表-置頂', 'work', 84, '使用範例：1個作品連續12週在xx市置頂曝光'),
+      pin('pinCo', '公司列表-置頂', 'company', 28, '使用範例：在xx市置頂曝光連續或分開曝光4週'),
+    ]},
+    { cat: '品牌專屬權益', rows: [
+      info('作品刊登', '12個', E_LIST, F_LIST),
+      info('尊貴標識（列表/詳情頁）', '精選', E_BADGE),
+      info('會員地圖', '區域推薦', E365),
+      info('591曝光（限時權益）', '加強曝光', E_591),
+      ai(3),
+    ]},
+  ],
+  '標準版': [
+    { cat: '列表優先置頂', rows: [
+      info('置頂優先權', '排在入門版前', E365),
+      pin('pinWork', '作品列表-置頂', 'work', 360, '使用範例：1個作品連續12個月在xx市置頂曝光'),
+      pin('pinCo', '公司列表-置頂', 'company', 90, '使用範例：在xx市置頂曝光連續每月15天共6個月'),
+    ]},
+    { cat: '品牌曝光', rows: brand5(5, 5, 0, '公司榜單-人氣榜') },
+    { cat: '品牌專屬權益', rows: [
+      info('作品刊登', '不限量', E_LIST, F_LIST),
+      info('專屬品牌官網', 'VIP品牌官網', E365),
+      info('尊貴標識（列表/詳情頁）', '推薦', E_BADGE),
+      info('會員地圖', '區域推薦', E365),
+      info('591曝光（限時權益）', '加強曝光', E_591),
+      ai(6),
+      info('業主真評價', '6個', E_REVIEW, '平台提供評價表單連結'),
+      info('代表作製作', '4個', E_EDIT, '編輯確認代表作資訊'),
+    ]},
+    { cat: '社群營銷', rows: [info('FB貼文', '2則', E_SOCIAL), info('IG貼文', '2則', E_SOCIAL)] },
+  ],
+  '加強版': [
+    { cat: '列表優先置頂', rows: [
+      info('置頂優先權', '排在標準版前', E365),
+      pin('pinWork', '作品列表-置頂', 'work', 720, '使用範例：2個作品連續12個月在xx市置頂曝光'),
+      pin('pinCo', '公司列表-置頂', 'company', 180, '使用範例：在xx市置頂曝光連續6個月'),
+    ]},
+    { cat: '品牌曝光', rows: [...brand5(12, 3, 0, '公司榜單-人氣榜'), ...banners(12, 3, 3, 6, 2, 2)] },
+    { cat: '品牌專屬權益', rows: [
+      info('作品刊登', '不限量', E_LIST, F_LIST),
+      info('專屬品牌官網', 'VIP品牌官網', E365),
+      info('尊貴標識（列表/詳情頁）', '嚴選', E_BADGE),
+      info('會員地圖', '縣市推薦', E365),
+      info('591曝光（限時權益）', '加強曝光', E_591),
+      ai(12),
+      info('業主真評價', '12個', E_REVIEW, '100平台提供評價表單連結'),
+      info('代表作製作', '6個', E_EDIT, '100編輯團隊確認代表作資訊'),
+      info('開箱文', '2篇', E_EDIT, F_UNBOX),
+    ]},
+    { cat: '社群營銷', rows: [info('FB貼文', '4則', E_SOCIAL), info('IG貼文', '4則', E_SOCIAL), info('IG限動', '2則', E_SOCIAL)] },
+  ],
+  '旗艦版': [
+    { cat: '精準獲客', rows: [
+      info('置頂優先權', '尊享 最高置頂', E365),
+      pin('pinWork', '作品列表-置頂', 'work', 2520, '使用範例：360次×1個作品×7都，或90次×7個作品×4都，按需求隨意搭配'),
+      pin('pinCo', '公司列表-置頂', 'company', 450, '使用建議：360次×1個縣市+90次×1個縣市，或90次×5個縣市，按需求隨意搭配'),
+    ]},
+    { cat: '品牌曝光', rows: [...brand5(36, 6, 6, '榜單-人氣榜'), ...banners(36, 6, 6, 18, 3, 3)] },
+    { cat: '品牌專屬權益', rows: [
+      info('作品刊登', '不限量', E365, F_LIST),
+      info('專屬品牌官網', 'VIP品牌官網', E365),
+      info('尊貴標識（列表/詳情頁）', '甄選好公司/甄選好作品', E_BADGE),
+      info('會員地圖', '全台推薦', E365),
+      info('591曝光（限時權益）', '6倍曝光', E_591),
+      ai(24),
+      info('業主真評價', '24個', E_REVIEW, '平台提供評價表單連結'),
+      info('代表作製作', '12個', E_EDIT, '100編輯團隊確認代表作資訊'),
+      info('開箱文', '4篇', E_EDIT, F_UNBOX),
+      info('短影音拍攝', '4支', '由100影音團隊對接，拍攝前雙方溝通初步想法', '100影音團隊確認影音資訊'),
+    ]},
+    { cat: '社群營銷', rows: [info('FB貼文+IG貼文', '12則', E_SOCIAL), info('IG限動', '4則', E_SOCIAL), push(12)] },
+  ],
+};
+const PLAN_NAMES = Object.keys(PLANS);
+const CITIES = ['台北市','新北市','桃園市','台中市','台南市','高雄市','基隆市','新竹市','新竹縣','苗栗縣','彰化縣','南投縣','雲林縣','嘉義市','嘉義縣','屏東縣','宜蘭縣','花蓮縣','台東縣','澎湖縣','金門縣','連江縣'];
+const OPTS = {
+  pinMode: [['cont', '連續排'], ['even', '平均分散在一年內']],
+  expoMode: [['cont', '連續排'], ['even', '平均分散在一年內']],
+  expoStagger: [['stagger', '錯開不同週'], ['same', '疊在同一週']],
+};
+
+/* ================= 狀態 ================= */
+const uid = () => Math.random().toString(36).slice(2, 10);
+let state = {
+  company: '', sales: '', plan: '標準版', start: '',
+  works: [{ id: uid(), name: '', link: '' }],
+  regions: [{ id: uid(), name: '' }],
+  opts: { pinMode: 'cont', expoMode: 'even', expoStagger: 'stagger' },
+  entries: [], aiPicks: [], pushPicks: [], genWarns: {}, generated: false, scheduledFor: null,
+};
+let dirty = false, tab = 'detail';
+const markDirty = () => { dirty = true; };
+
+/* ================= 日期工具（以 UTC 日數計） ================= */
+const DAY = 86400000;
+const pad = n => String(n).padStart(2, '0');
+const parse = s => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d) / DAY; };
+const fmt = n => { const d = new Date(n * DAY); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`; };
+const md = n => { const d = new Date(n * DAY); return `${d.getUTCMonth() + 1}.${d.getUTCDate()}`; };
+const dow = n => new Date(n * DAY).getUTCDay();
+const ym = n => { const d = new Date(n * DAY); return [d.getUTCFullYear(), d.getUTCMonth()]; };
+const monthEnd = n => { const [y, m] = ym(n); return Date.UTC(y, m + 1, 0) / DAY; };
+const gcd = (a, b) => b ? gcd(b, a % b) : a;
+const WEEKDAY = '日一二三四五六';
+
+// 合約 365 天；排期表固定 12 個月（從開始日的月份起），排程要在第 12 個月月底（L）前走完。
+// 週次從第一個週一起算，只用完整的週；不足一週的天數先排在最前面（front），再排最後面（tail）。
+function windowInfo() {
+  if (!state.start) return null;
+  const s = parse(state.start), e = s + 364;
+  const [y0, m0] = ym(s);
+  const months = Array.from({ length: 12 }, (_, i) => [y0 + Math.floor((m0 + i) / 12), (m0 + i) % 12]);
+  const L = Math.min(e, Date.UTC(y0, m0 + 12, 0) / DAY);
+  const d = dow(s), first = d === 1 ? s : s + (8 - d) % 7;
+  const weeks = [];
+  for (let w = first; w + 6 <= L; w += 7) weeks.push({ s: w, e: w + 6 });
+  const lastEnd = weeks.length ? weeks[weeks.length - 1].e : first - 1;
+  const front = first > s ? { s, e: first - 1 } : null;
+  const tail = lastEnd < L ? { s: lastEnd + 1, e: L } : null;
+  return { s, e, L, first, weeks, full: weeks, front, tail, days: L - s + 1, months };
+}
+const monthIdx = (W, n) => { const [y, m] = ym(n); return W.months.findIndex(x => x[0] === y && x[1] === m); };
+
+/* ================= 方案查詢 ================= */
+const planGroups = () => PLANS[state.plan];
+const planRows = () => planGroups().flatMap(g => g.rows);
+const schedItems = () => planRows().filter(r => r.kind === 'pin' || r.kind === 'expo');
+const itemByKey = k => planRows().find(r => r.key === k);
+const validWorks = () => state.works.filter(w => w.name.trim());
+const validRegions = () => state.regions.filter(r => r.name.trim());
+const letter = i => i < 26 ? String.fromCharCode(65 + i) : 'A' + String.fromCharCode(65 + i - 26);
+const workLabel = id => { const i = state.works.findIndex(w => w.id === id); return i < 0 ? '（作品已刪除）' : (state.works[i].name.trim() || `作品${letter(i)}`); };
+const regionLabel = id => { const r = state.regions.find(x => x.id === id); return r ? (r.name.trim() || '（未命名區域）') : '（區域已刪除）'; };
+
+/* ================= 自動排程 ================= */
+// 作品 × 區域的組合，交錯排列讓作品和區域都會輪到
+function interleave(works, regions) {
+  const nW = works.length, nR = regions.length, L = nW * nR / gcd(nW, nR), out = [];
+  for (let i = 0; i < nW * nR; i++) out.push({ work: works[i % nW].id, region: regions[(i % nR + Math.floor(i / L)) % nR].id });
+  return out;
+}
+function mergeSegs(segs) {
+  segs.sort((a, b) => (a.work || '').localeCompare(b.work || '') || a.region.localeCompare(b.region) || a.s - b.s);
+  const out = [];
+  for (const g of segs) {
+    const last = out[out.length - 1];
+    if (last && last.work === g.work && last.region === g.region && last.e + 1 === g.s) last.e = g.e;
+    else out.push({ ...g });
+  }
+  return out;
+}
+
+// 置頂類：1次 = 1組（作品×區域）× 1天
+function genPin(item, W, works, regions) {
+  const combos = item.type === 'work' ? interleave(works, regions) : regions.map(r => ({ work: null, region: r.id }));
+  const C = combos.length, T = item.total, warns = [];
+  if (!C) return { segs: [], warns: [item.type === 'work' ? '需要至少 1 個作品和 1 個區域' : '需要至少 1 個區域'] };
+  let k, budgets;
+  if (C * W.days < T) {
+    k = C; budgets = Array(C).fill(W.days);
+    const short = T - C * W.days;
+    warns.push(`組合不足，還有 ${short} 次用不完（目前 ${C} 組，每組最多 ${W.days} 天）。建議增加${item.type === 'work' ? '作品或區域' : '區域'}。`);
+  } else {
+    k = Math.min(C, Math.ceil(T / W.days));
+    const base = Math.floor(T / k), rem = T % k;
+    budgets = Array.from({ length: k }, (_, l) => base + (l < rem ? 1 : 0));
+  }
+  const segs = []; let dropped = 0;
+  const F = W.weeks.length, len = r => r ? r.e - r.s + 1 : 0;
+  for (let l = 0; l < k; l++) {
+    const lane = combos.filter((_, i) => i % k === l), B = budgets[l];
+    const q = Math.min(Math.floor(B / 7), F);
+    let rest = B - q * 7;
+    const even = state.opts.pinMode === 'even' && q < F;
+    const used = Array.from({ length: q }, (_, i) => even ? Math.floor(i * F / q) : i);
+    const comboAt = i => q ? (even ? lane[i % lane.length] : lane[Math.floor(i * lane.length / q)]) : lane[0];
+    if (lane.length > Math.max(q, 1)) dropped += lane.length - Math.max(q, 1);
+    used.forEach((wi, i) => { const c = comboAt(i); segs.push({ s: W.weeks[wi].s, e: W.weeks[wi].e, work: c.work, region: c.region }); });
+    // 剩下不足一週的天數：先排最前面（緊接第一個週一之前）
+    if (rest > 0 && W.front) {
+      const x = Math.min(rest, len(W.front)), c = comboAt(0);
+      segs.push({ s: W.first - x, e: W.first - 1, work: c.work, region: c.region }); rest -= x;
+    }
+    // 最前面放不下時，接在已排的週後面（還有空的週），最後才用月底那幾天
+    if (rest > 0 && q < F) {
+      const free = even ? W.weeks.findIndex((_, wi) => !used.includes(wi)) : q;
+      const c = comboAt(Math.max(q - 1, 0)), x = Math.min(rest, 7);
+      segs.push({ s: W.weeks[free].s, e: W.weeks[free].s + x - 1, work: c.work, region: c.region }); rest -= x;
+    }
+    if (rest > 0 && W.tail) {
+      const x = Math.min(rest, len(W.tail)), c = comboAt(Math.max(q - 1, 0));
+      segs.push({ s: W.tail.s, e: W.tail.s + x - 1, work: c.work, region: c.region }); rest -= x;
+    }
+  }
+  if (dropped) warns.push(`組合太多，有 ${dropped} 組排不到（以週為最小單位，權益只夠排到前面的組合）。`);
+  return { segs: mergeSegs(segs), warns };
+}
+
+// 品牌曝光類：1週 = 1個區域 × 1週；切成 chunks 段，每段輪一組
+function genExpo(item, j, m, cursor, W, works, regions) {
+  const warns = [];
+  let combos;
+  if (item.type === 'work') {
+    const ws = item.max ? works.slice(0, item.max) : works;
+    if (item.max && works.length > item.max) warns.push(`此版位最多 ${item.max} 個作品，只使用前 ${item.max} 個。`);
+    combos = ws.length && regions.length ? interleave(ws, regions) : [];
+  } else {
+    const rs = item.max ? regions.slice(0, item.max) : regions;
+    if (item.max && regions.length > item.max) warns.push(`此版位最多 ${item.max} 個縣市，只使用前 ${item.max} 個。`);
+    combos = rs.map(r => ({ work: null, region: r.id }));
+  }
+  if (!combos.length) return { segs: [], warns: [item.type === 'work' ? '需要至少 1 個作品和 1 個區域' : '需要至少 1 個區域'] };
+  const N = W.full.length, c = item.chunks, L = item.total / c, segs = [];
+  const P = N / c, offset = state.opts.expoStagger === 'stagger' ? Math.floor(j * P / m) : 0;
+  for (let i = 0; i < c; i++) {
+    let start;
+    if (state.opts.expoMode === 'even') start = Math.min(Math.floor(i * P) + offset, N - L);
+    else start = (state.opts.expoStagger === 'stagger' ? cursor : 0) + i * L;
+    const combo = combos[(j + i) % combos.length];
+    for (let t = 0; t < L; t++) {
+      const wk = W.full[(start + t) % N];
+      segs.push({ s: wk.s, e: wk.e, work: combo.work, region: combo.region });
+    }
+  }
+  return { segs: mergeSegs(segs), warns };
+}
+
+function generateAll() {
+  const W = windowInfo(), works = validWorks(), regions = validRegions();
+  const entries = [], genWarns = {};
+  const expoItems = schedItems().filter(i => i.kind === 'expo');
+  let cursor = 0;
+  for (const item of schedItems()) {
+    let r;
+    if (item.kind === 'pin') r = genPin(item, W, works, regions);
+    else {
+      const j = expoItems.indexOf(item);
+      r = genExpo(item, j, expoItems.length, cursor, W, works, regions);
+      cursor += item.total;
+    }
+    r.segs.forEach(g => entries.push({ id: uid(), item: item.key, start: fmt(g.s), end: fmt(g.e), work: g.work, region: g.region }));
+    if (r.warns.length) genWarns[item.key] = r.warns;
+  }
+  state.entries = entries; state.genWarns = genWarns; state.generated = true;
+  state.aiPicks = defaultAiPicks(); state.pushPicks = defaultPushPicks();
+  state.scheduledFor = { plan: state.plan, start: state.start };
+}
+
+/* ================= 用量計算與檢查 ================= */
+const entryDays = e => parse(e.end) - parse(e.start) + 1;
+function usage(item) {
+  const days = state.entries.filter(e => e.item === item.key).reduce((s, e) => s + Math.max(0, entryDays(e)), 0);
+  return item.kind === 'pin' ? days : days / 7;
+}
+const unitName = item => item.kind === 'pin' ? '次' : '週';
+const numStr = x => Number.isInteger(x) ? String(x) : x.toFixed(1);
+function statusOf(item) {
+  const u = usage(item), t = item.total;
+  if (Math.abs(u - t) < 1e-9) return { cls: 'ok', text: '剛好用完' };
+  if (u < t) return { cls: 'under', text: `剩 ${numStr(t - u)} ${unitName(item)}` };
+  return { cls: 'over', text: `超用 ${numStr(u - t)} ${unitName(item)}` };
+}
+function entryProblems(e, W) {
+  const p = [];
+  const item = itemByKey(e.item);
+  if (parse(e.end) < parse(e.start)) p.push('結束日早於開始日');
+  if (W && (parse(e.start) < W.s || parse(e.end) > W.L)) p.push('超出排期表的 12 個月');
+  if (!state.regions.some(r => r.id === e.region)) p.push('區域已刪除');
+  if (item && item.type === 'work' && !state.works.some(w => w.id === e.work)) p.push('作品已刪除');
+  const clash = state.entries.some(o => o !== e && o.item === e.item && o.region === e.region && (o.work || '') === (e.work || '')
+    && parse(o.start) <= parse(e.end) && parse(e.start) <= parse(o.end));
+  if (clash) p.push('同一組合日期重疊');
+  return p;
+}
+
+/* ================= 版面：基本資料 / 作品 / 區域 ================= */
+const $ = s => document.querySelector(s);
+function ask(msg, okText = '確定') {
+  return new Promise(res => {
+    const bg = document.createElement('div');
+    bg.className = 'modal-bg';
+    bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><p></p><div class="row"><button class="btn" data-a="0">取消</button><button class="btn primary" data-a="1"></button></div></div>`;
+    bg.querySelector('p').textContent = msg;
+    bg.querySelector('[data-a="1"]').textContent = okText;
+    const done = v => { bg.remove(); res(v); };
+    bg.onclick = e => { const b = e.target.closest('[data-a]'); if (b) done(b.dataset.a === '1'); else if (e.target === bg) done(false); };
+    document.body.appendChild(bg);
+    bg.querySelector('[data-a="1"]').focus();
+  });
+}
+let toastTimer;
+function toast(msg, kind = 'info') {
+  let t = document.querySelector('.toast');
+  if (!t) { t = document.createElement('div'); document.body.appendChild(t); }
+  t.className = 'toast ' + kind; t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 4000);
+}
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function renderSeg(el, items, value, onPick) {
+  el.innerHTML = items.map(([v, t]) => `<button data-v="${esc(v)}" class="${v === value ? 'on' : ''}">${esc(t)}</button>`).join('');
+  el.onclick = ev => { const b = ev.target.closest('button'); if (b) onPick(b.dataset.v); };
+}
+function renderBasics() {
+  $('#fCompany').value = state.company;
+  $('#fSales').value = state.sales;
+  $('#fStart').value = state.start;
+  renderSeg($('#planSeg'), PLAN_NAMES.map(p => [p, p]), state.plan, pickPlan);
+  document.querySelectorAll('[data-opt]').forEach(el => {
+    const k = el.dataset.opt;
+    renderSeg(el, OPTS[k], state.opts[k], v => { state.opts[k] = v; markDirty(); renderBasics(); });
+  });
+  renderWindow();
+}
+function renderWindow() {
+  const W = windowInfo();
+  $('#fEnd').value = W ? fmt(W.e) : '';
+  $('#windowHint').textContent = W
+    ? `合約 ${fmt(W.s)}（週${WEEKDAY[dow(W.s)]}）～ ${fmt(W.e)}。排期表 12 個月（${W.months[0][0]}年${W.months[0][1] + 1}月～${W.months[11][0]}年${W.months[11][1] + 1}月），排程範圍 ${fmt(W.s)}～${fmt(W.L)}：從 ${fmt(W.first)}（週一）起按週排${W.front ? `，不足一週的天數排在最前面（${md(W.front.s)}-${md(W.front.e)}）` : ''}。`
+    : '';
+}
+async function pickPlan(p) {
+  if (p === state.plan) return;
+  if (state.entries.length && !(await ask(`切換成「${p}」會清除目前的排程，確定嗎？`, '切換方案'))) return;
+  state.plan = p; state.entries = []; state.aiPicks = []; state.pushPicks = []; state.genWarns = {}; state.generated = false; state.scheduledFor = null;
+  markDirty(); renderBasics(); renderResult();
+}
+function renderWorks() {
+  $('#worksList').innerHTML = state.works.map((w, i) => `
+    <div class="list-row work">
+      <span class="tag">${letter(i)}</span>
+      <input data-wid="${w.id}" data-f="name" value="${esc(w.name)}" placeholder="作品名稱">
+      <input data-wid="${w.id}" data-f="link" value="${esc(w.link)}" placeholder="作品連結（之後補也可以）">
+      <button class="btn ghost" data-delwork="${w.id}" title="刪除">✕</button>
+    </div>`).join('');
+}
+function renderRegions() {
+  $('#regionsList').innerHTML = state.regions.map((r, i) => `
+    <div class="list-row region">
+      <span class="tag">${i + 1}</span>
+      <input data-rid="${r.id}" value="${esc(r.name)}" placeholder="例：苗栗縣" list="cityList">
+      <button class="btn ghost" data-delregion="${r.id}" title="刪除">✕</button>
+    </div>`).join('');
+}
+async function removeWithEntries(kind, id) {
+  const used = state.entries.filter(e => (kind === 'work' ? e.work : e.region) === id).length;
+  if (used && !(await ask(`這個${kind === 'work' ? '作品' : '區域'}已排了 ${used} 筆，刪除會一併移除這些排程，確定嗎？`, '刪除'))) return false;
+  state.entries = state.entries.filter(e => (kind === 'work' ? e.work : e.region) !== id);
+  return true;
+}
+
+/* ================= 版面：結果 ================= */
+function renderResult() {
+  const body = $('#resultBody');
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  const W = windowInfo();
+  if (!state.generated) {
+    body.innerHTML = `<div class="empty">填好上面的資料後，按「一鍵自動排程」就會出現在這裡。<br><button class="btn" data-demo style="margin-top:12px">先載入範例看看</button></div>`;
+    return;
+  }
+  let stale = '';
+  const sf = state.scheduledFor;
+  if (sf && sf.start !== state.start) stale = `<div class="notice warn">合約開始日已變更（原本排程是以 ${sf.start} 起算），建議重新按「一鍵自動排程」。</div>`;
+  body.innerHTML = stale + (tab === 'detail' ? detailHTML(W) : gridHTML(W));
+}
+
+function detailHTML(W) {
+  const items = schedItems();
+  const summary = `<table class="summary"><thead><tr><th>權益</th><th style="text-align:right">總量</th><th style="text-align:right">已排</th><th>狀態</th></tr></thead><tbody>${
+    items.map(it => { const st = statusOf(it);
+      const flagged = state.genWarns[it.key];
+      return `<tr class="${flagged ? 'flag' : ''}"><td><a href="#card-${it.key}" data-jump="${it.key}">${esc(it.name)}</a>${flagged ? '<span class="pill flag">⚠ 需留意</span>' : ''}</td><td class="n">${it.total} ${unitName(it)}</td><td class="n">${numStr(usage(it))} ${unitName(it)}</td><td><span class="pill ${st.cls}">${st.text}</span></td></tr>`;
+    }).join('')}</tbody></table>`;
+  const cards = items.map(it => itemCardHTML(it, W)).join('');
+  const ai = planRows().find(r => r.kind === 'ai');
+  const pu = planRows().find(r => r.kind === 'push');
+  return summary + cards + (ai ? aiCardHTML(ai) : '') + (pu ? pushCardHTML(pu, W) : '') + extrasHTML(W);
+}
+
+function itemCardHTML(it, W) {
+  const u = usage(it), st = statusOf(it), pct = Math.min(100, u / it.total * 100);
+  const es = state.entries.filter(e => e.item === it.key)
+    .sort((a, b) => a.start.localeCompare(b.start) || regionLabel(a.region).localeCompare(regionLabel(b.region)));
+  const regionOpts = sel => state.regions.map(r => `<option value="${r.id}" ${r.id === sel ? 'selected' : ''}>${esc(r.name.trim() || '（未命名區域）')}</option>`).join('')
+    + (state.regions.some(r => r.id === sel) ? '' : `<option selected>（區域已刪除）</option>`);
+  const workOpts = sel => state.works.map((w, i) => `<option value="${w.id}" ${w.id === sel ? 'selected' : ''}>${letter(i)}．${esc(w.name.trim() || '（未命名作品）')}</option>`).join('')
+    + (state.works.some(w => w.id === sel) ? '' : `<option selected>（作品已刪除）</option>`);
+  const min = W ? fmt(W.s) : '', max = W ? fmt(W.L) : '';
+  const rows = es.map(e => {
+    const probs = entryProblems(e, W), d = entryDays(e);
+    const amount = it.kind === 'pin' ? `${d} 天` : `${numStr(d / 7)} 週`;
+    return `<tr class="${probs.length ? 'bad' : ''}" title="${esc(probs.join('、'))}">
+      <td><select data-eid="${e.id}" data-f="region">${regionOpts(e.region)}</select></td>
+      ${it.type === 'work' ? `<td><select data-eid="${e.id}" data-f="work">${workOpts(e.work)}</select></td>` : ''}
+      <td><input type="date" data-eid="${e.id}" data-f="start" value="${e.start}" min="${min}" max="${max}"></td>
+      <td><input type="date" data-eid="${e.id}" data-f="end" value="${e.end}" min="${min}" max="${max}"></td>
+      <td class="n">${amount}</td>
+      <td style="width:40px"><button class="btn ghost" data-delentry="${e.id}" title="刪除">✕</button></td>
+    </tr>`;
+  }).join('');
+  const probCount = es.filter(e => entryProblems(e, W).length).length;
+  const gw = (state.genWarns[it.key] || []).map(w => `<div class="item-note">⚠ ${esc(w)}</div>`).join('');
+  const typeText = it.type === 'work' ? '作品＋區域' : '區域';
+  const unitHint = it.kind === 'pin' ? '1次＝1組×1天' : '1週＝1個區域×1週';
+  return `<div class="item-card" id="card-${it.key}">
+    <div class="item-head">
+      <div><h3>${esc(it.name)}</h3><span class="sub">${typeText}・總量 ${it.total} ${unitName(it)}（${unitHint}）${it.max ? `・最多 ${it.max} 個${it.type === 'work' ? '作品' : '縣市'}` : ''}</span></div>
+      <div class="usage">已排 <b>${numStr(u)}</b> / ${it.total} ${unitName(it)}　<span class="pill ${st.cls}">${st.text}</span></div>
+    </div>
+    <div class="bar ${st.cls}"><span style="width:${pct}%"></span></div>
+    ${gw}
+    ${probCount ? `<div class="item-warn">有 ${probCount} 筆排程有問題（游標移到紅色列上可看原因）</div>` : ''}
+    <div class="entries-wrap"><table class="entries">
+      <thead><tr><th>區域</th>${it.type === 'work' ? '<th>作品</th>' : ''}<th>開始日</th><th>結束日</th><th style="text-align:right">用量</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="6" class="hint">尚無排程</td></tr>`}</tbody>
+    </table></div>
+    <div class="add-row"><button class="btn add" data-addentry="${it.key}">＋ 新增一筆</button></div>
+  </div>`;
+}
+
+// AI環景：每一格指定一個作品 id，空字串 = 待補
+const aiItem = () => planRows().find(r => r.kind === 'ai');
+function defaultAiPicks() {
+  const it = aiItem(), ws = validWorks();
+  return it ? Array.from({ length: it.count }, (_, i) => ws[i] ? ws[i].id : '') : [];
+}
+function aiPicks(it) {
+  if (!Array.isArray(state.aiPicks) || state.aiPicks.length !== it.count) state.aiPicks = defaultAiPicks();
+  return state.aiPicks;
+}
+const aiName = id => { const w = state.works.find(x => x.id === id && x.name.trim()); return w ? w.name.trim() : '待補'; };
+function aiList(it) { return aiPicks(it).map(aiName); }
+function aiCardHTML(it) {
+  const picks = aiPicks(it);
+  const filled = picks.filter(id => aiName(id) !== '待補');
+  const dup = filled.length !== new Set(filled).size;
+  const st = filled.length === it.count ? { cls: 'ok', text: '已全部指定' } : { cls: 'under', text: `待補 ${it.count - filled.length} 個` };
+  const opts = sel => `<option value="">待補</option>` + state.works.map((w, i) => w.name.trim()
+    ? `<option value="${w.id}" ${w.id === sel ? 'selected' : ''}>${letter(i)}．${esc(w.name.trim())}</option>` : '').join('');
+  const cells = picks.map((id, i) => `<label class="ai-slot"><span class="tag">${i + 1}</span><select data-ai="${i}">${opts(aiName(id) === '待補' ? '' : id)}</select></label>`).join('');
+  return `<div class="item-card" id="card-ai">
+    <div class="item-head">
+      <div><h3>${esc(it.name)}</h3><span class="sub">共 ${it.count} 個，每格選一個作品；建議首選代表作</span></div>
+      <div class="usage">已指定 <b>${filled.length}</b> / ${it.count} 個　<span class="pill ${st.cls}">${st.text}</span></div>
+    </div>
+    <div class="bar ${st.cls}"><span style="width:${filled.length / it.count * 100}%"></span></div>
+    ${dup ? '<div class="item-note">⚠ 有作品被重複指定，AI環景應該是不同的作品。</div>' : ''}
+    <div class="ai-grid">${cells}</div>
+  </div>`;
+}
+// APP推播：每月一則，每格指定一個作品 id（可重複），空字串 = 待補
+function defaultPushPicks() {
+  const it = planRows().find(r => r.kind === 'push'), ws = validWorks();
+  return it ? Array.from({ length: it.count }, (_, i) => ws.length ? ws[i % ws.length].id : '') : [];
+}
+function pushPicks(it) {
+  if (!Array.isArray(state.pushPicks) || state.pushPicks.length !== it.count) state.pushPicks = defaultPushPicks();
+  return state.pushPicks;
+}
+function pushList(it, W) {
+  const start = 0;
+  return pushPicks(it).map((id, i) => ({ i, mi: start + i, id, text: aiName(id) })).filter(x => x.mi < W.months.length);
+}
+function pushCardHTML(it, W) {
+  const list = pushList(it, W);
+  const filled = list.filter(x => x.text !== '待補').length;
+  const st = filled === it.count ? { cls: 'ok', text: '已全部指定' } : { cls: 'under', text: `待補 ${it.count - filled} 則` };
+  const opts = sel => `<option value="">待補</option>` + state.works.map((w, i) => w.name.trim()
+    ? `<option value="${w.id}" ${w.id === sel ? 'selected' : ''}>${letter(i)}．${esc(w.name.trim())}</option>` : '').join('');
+  const cells = list.map(x => `<label class="ai-slot"><span class="tag wide">${W.months[x.mi][0]}/${W.months[x.mi][1] + 1}</span><select data-push="${x.i}">${opts(x.text === '待補' ? '' : x.id)}</select></label>`).join('');
+  return `<div class="item-card" id="card-push">
+    <div class="item-head">
+      <div><h3>${esc(it.name)}</h3><span class="sub">每月 1 則，共 ${it.count} 則；同一個作品可以重複推播</span></div>
+      <div class="usage">已指定 <b>${filled}</b> / ${it.count} 則　<span class="pill ${st.cls}">${st.text}</span></div>
+    </div>
+    <div class="bar ${st.cls}"><span style="width:${filled / it.count * 100}%"></span></div>
+    <div class="ai-grid">${cells}</div>
+  </div>`;
+}
+function extrasHTML(W) {
+  const rows = planRows().filter(r => r.kind === 'info');
+  const body = rows.map(r => {
+    let extra = '';
+    return `<tr><td>${esc(r.name)}</td><td>${esc(r.qty)}</td><td>${esc(r.desc)}${extra}</td></tr>`;
+  }).join('');
+  return `<div class="item-card"><div class="item-head"><div><h3>其他權益（不需排程）</h3><span class="sub">以下權益正式開始後由平台或編輯團隊安排，業務不用排</span></div></div>
+    <table class="info-table" style="margin-top:10px"><thead><tr><th>權益</th><th>數量</th><th>說明</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+/* 月份總覽（與 Excel 同一份資料） */
+const workLink = id => ((state.works.find(w => w.id === id) || {}).link || '').trim();
+function cellTexts(it, W, withLink) {
+  const cells = W.months.map(() => []);
+  for (const e of state.entries.filter(x => x.item === it.key)) {
+    const s = parse(e.start), en = parse(e.end);
+    if (en < s) continue;
+    const pieces = [];
+    if (it.kind === 'pin') { let c = s; while (c <= en) { const pe = Math.min(en, monthEnd(c)); pieces.push([c, pe]); c = pe + 1; } }
+    else pieces.push([s, en]);
+    for (const [ps, pe] of pieces) {
+      const mi = monthIdx(W, ps);
+      if (mi < 0) continue;
+      const lines = [regionLabel(e.region), `${md(ps)}-${md(pe)}` + (it.kind === 'pin' ? ` (${pe - ps + 1}天)` : '')];
+      if (it.type === 'work') lines.push(workLabel(e.work));
+      if (withLink && it.type === 'work' && workLink(e.work)) lines.push(workLink(e.work));
+      cells[mi].push({ s: ps, r: regionLabel(e.region), text: lines.join('\n') });
+    }
+  }
+  return cells.map(list => list.sort((a, b) => a.s - b.s || a.r.localeCompare(b.r)).map(x => x.text).join('\n\n'));
+}
+function monthCells(row, W, withLink) {
+  if (row.kind === 'pin' || row.kind === 'expo') return cellTexts(row, W, withLink);
+  if (row.kind === 'push') { const c = W.months.map(() => ''); pushList(row, W).forEach(x => c[x.mi] = x.text); return c; }
+  return null;
+}
+function gridHTML(W) {
+  const head = `<tr><th class="sticky">權益</th><th>數量</th>${W.months.map(([y, m]) => `<th>${y}/${m + 1}</th>`).join('')}</tr>`;
+  const body = planGroups().map(g => {
+    const rows = g.rows.filter(r => r.kind !== 'info');
+    if (!rows.length) return '';
+    return `<tr><td class="sticky cat">${esc(g.cat)}</td><td class="cat" colspan="${W.months.length + 1}"></td></tr>` + rows.map(r => {
+      const cells = monthCells(r, W);
+      const tds = cells ? cells.map(t => `<td>${esc(t)}</td>`).join('') : `<td colspan="${W.months.length}">${esc(aiList(r).join(' / '))}</td>`;
+      return `<tr><td class="sticky">${esc(r.name)}</td><td>${esc(r.qty)}</td>${tds}</tr>`;
+    }).join('');
+  }).join('');
+  return `<div class="gridwrap"><table class="mgrid"><thead>${head}</thead><tbody>${body}</tbody></table></div>
+    <div class="hint" style="margin-top:8px">只列出需要排程或填作品的權益；完整格式（含說明、素材提供）請按「匯出 Excel」。</div>`;
+}
+
+/* ================= 事件 ================= */
+$('#fCompany').addEventListener('input', e => { state.company = e.target.value; markDirty(); });
+$('#fSales').addEventListener('input', e => { state.sales = e.target.value; markDirty(); });
+$('#fStart').addEventListener('change', e => { state.start = e.target.value; markDirty(); renderWindow(); renderResult(); });
+$('#cityList').innerHTML = CITIES.map(c => `<option value="${c}">`).join('');
+
+$('#addWork').onclick = () => { state.works.push({ id: uid(), name: '', link: '' }); markDirty(); renderWorks(); $('#worksList').lastElementChild.querySelector('input').focus(); };
+$('#addRegion').onclick = () => { state.regions.push({ id: uid(), name: '' }); markDirty(); renderRegions(); $('#regionsList').lastElementChild.querySelector('input').focus(); };
+$('#worksList').addEventListener('input', e => {
+  const t = e.target; if (!t.dataset.wid) return;
+  state.works.find(w => w.id === t.dataset.wid)[t.dataset.f] = t.value; markDirty();
+});
+$('#worksList').addEventListener('change', renderResult);
+$('#worksList').addEventListener('click', async e => {
+  const b = e.target.closest('[data-delwork]'); if (!b) return;
+  if (!(await removeWithEntries('work', b.dataset.delwork))) return;
+  state.works = state.works.filter(w => w.id !== b.dataset.delwork); markDirty(); renderWorks(); renderResult();
+});
+$('#regionsList').addEventListener('input', e => {
+  const t = e.target; if (!t.dataset.rid) return;
+  state.regions.find(r => r.id === t.dataset.rid).name = t.value; markDirty();
+});
+$('#regionsList').addEventListener('change', renderResult);
+$('#regionsList').addEventListener('click', async e => {
+  const b = e.target.closest('[data-delregion]'); if (!b) return;
+  if (!(await removeWithEntries('region', b.dataset.delregion))) return;
+  state.regions = state.regions.filter(r => r.id !== b.dataset.delregion); markDirty(); renderRegions(); renderResult();
+});
+
+$('#btnRun').onclick = async () => {
+  const errs = [];
+  if (!state.company.trim()) errs.push('請填公司名稱');
+  if (!state.start) errs.push('請填合約開始日');
+  if (!validWorks().length) errs.push('請至少填 1 個作品名稱');
+  if (!validRegions().length) errs.push('請至少填 1 個門市所在縣市');
+  const msg = $('#runMsg');
+  if (errs.length) { msg.innerHTML = `<div class="notice err">還不能排程：<ul>${errs.map(x => `<li>${x}</li>`).join('')}</ul></div>`; return; }
+  if (state.entries.length && !(await ask('重新自動排程會覆蓋目前的排程（包含手動調整），確定嗎？', '重新排程'))) return;
+  generateAll(); markDirty(); tab = 'detail';
+  const warnCount = Object.keys(state.genWarns).length;
+  msg.innerHTML = warnCount
+    ? `<div class="notice warn"><b>已完成排程，但有 ${warnCount} 項權益需要留意：</b><ul>${Object.entries(state.genWarns).map(([k, ws]) =>
+        `<li><button class="jump" data-jump="${k}">${esc(itemByKey(k).name)}</button>：${ws.map(esc).join(' ')}</li>`).join('')}</ul></div>`
+    : `<div class="notice info">已完成排程，所有權益都剛好用完。可以在下方微調，或直接匯出 Excel。</div>`;
+  renderResult();
+  $('#result').scrollIntoView({ behavior: 'smooth' });
+};
+
+document.addEventListener('click', e => {
+  const j = e.target.closest('[data-jump]'); if (!j) return;
+  e.preventDefault();
+  if (tab !== 'detail') { tab = 'detail'; renderResult(); }
+  const card = document.getElementById('card-' + j.dataset.jump);
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+$('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) { tab = b.dataset.tab; renderResult(); } };
+
+$('#resultBody').addEventListener('change', e => {
+  if (e.target.dataset.push !== undefined) { state.pushPicks[+e.target.dataset.push] = e.target.value; markDirty(); renderResult(); return; }
+  if (e.target.dataset.ai !== undefined) { state.aiPicks[+e.target.dataset.ai] = e.target.value; markDirty(); renderResult(); return; }
+  const t = e.target, id = t.dataset.eid; if (!id) return;
+  const en = state.entries.find(x => x.id === id);
+  en[t.dataset.f] = t.value;
+  if (t.dataset.f === 'start' && en.end && parse(en.end) < parse(en.start)) en.end = en.start;
+  markDirty(); renderResult();
+});
+$('#resultBody').addEventListener('click', e => {
+  if (e.target.closest('[data-demo]')) {
+    Object.assign(state, {
+      company: '範例設計（示範資料）', sales: '業務姓名', plan: '標準版', start: fmt(parse(new Date().toISOString().slice(0, 10))),
+      works: [{ id: uid(), name: '範例作品一', link: '' }, { id: uid(), name: '範例作品二', link: '' }],
+      regions: [{ id: uid(), name: '台中市' }, { id: uid(), name: '彰化縣' }],
+    });
+    generateAll(); markDirty(); renderAll();
+    $('#runMsg').innerHTML = '<div class="notice info">已載入示範資料。換成客戶的資料後，再按一次「一鍵自動排程」即可。</div>';
+    return;
+  }
+  const del = e.target.closest('[data-delentry]');
+  if (del) { state.entries = state.entries.filter(x => x.id !== del.dataset.delentry); markDirty(); renderResult(); return; }
+  const add = e.target.closest('[data-addentry]');
+  if (add) {
+    const W = windowInfo(), it = itemByKey(add.dataset.addentry);
+    if (!W || !state.regions.length) { toast('請先填合約開始日和門市區域', 'err'); return; }
+    const s = W.first;
+    state.entries.push({ id: uid(), item: it.key, start: fmt(s), end: fmt(s + 6), region: (validRegions()[0] || state.regions[0]).id,
+      work: it.type === 'work' ? (validWorks()[0] || state.works[0] || {}).id || null : null });
+    markDirty(); renderResult();
+  }
+});
+
+/* ================= 存檔／讀檔 ================= */
+// 在網頁連結版用平台的下載功能；直接開 HTML 檔時用一般下載
+let dlCap;
+async function download(blob, name) {
+  if (window.claude?.use) {
+    if (dlCap === undefined) dlCap = await window.claude.use('downloads');
+    if (dlCap) {
+      try { await dlCap.save({ filename: name, data: blob }); return true; }
+      catch (err) {
+        if (err?.code !== 'declined') toast('無法下載檔案：' + (err?.message || err?.code || '未知錯誤'), 'err');
+        return false;
+      }
+    }
+    // 在網頁連結裡，平台下載功能不能用時，一般下載也會被擋，要明確告訴業務
+    toast('目前的檢視方式無法下載檔案。請先登入 Claude 再打開這個連結，或改用本機的 HTML 檔。', 'err');
+    return false;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  return true;
+}
+const safeName = s => (s || '未命名').replace(/[\\/:*?"<>|]/g, '_');
+$('#btnSave').onclick = async () => {
+  const data = { app: 'store-plan-scheduler', version: 1, savedAt: new Date().toISOString(), state };
+  if (await download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${safeName(state.company)}－${state.plan}排期.json`)) dirty = false;
+};
+$('#btnLoad').onclick = async () => {
+  if (dirty && !(await ask('目前的資料還沒存檔，讀檔會覆蓋，確定嗎？', '讀檔'))) return;
+  $('#fileLoad').click();
+};
+$('#fileLoad').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    if (data.app !== 'store-plan-scheduler' || !data.state || !PLANS[data.state.plan]) throw new Error('格式不符');
+    state = { ...state, ...data.state, opts: { ...state.opts, ...data.state.opts } };
+    dirty = false; $('#runMsg').innerHTML = '';
+    renderAll();
+  } catch (err) { toast('讀檔失敗：這不是本工具存的檔案（' + err.message + '）', 'err'); }
+};
+window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ================= 匯出 Excel（範本格式） ================= */
+function b64ToBuf(b64) {
+  const bin = atob(b64), u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u.buffer;
+}
+const normName = s => String(s || '').replace(/横/g, '橫').replace(/\s+/g, '');
+// 範本裡月份欄整列合併的權益（例如旗艦版的置頂），照範本寫成一段文字
+function runSummary(it) {
+  const es = state.entries.filter(e => e.item === it.key)
+    .sort((a, b) => a.start.localeCompare(b.start) || regionLabel(a.region).localeCompare(regionLabel(b.region)));
+  const unit = unitName(it), amt = d => it.kind === 'pin' ? d : numStr(d / 7);
+  const line = e => `曝光縣市：${regionLabel(e.region)}｜走期：${e.start}~${e.end}（${amt(entryDays(e))}${unit}）`;
+  const blocks = [];
+  if (it.type === 'work') {
+    const byWork = new Map();
+    es.forEach(e => { if (!byWork.has(e.work)) byWork.set(e.work, []); byWork.get(e.work).push(e); });
+    byWork.forEach((list, w) => blocks.push([`作品名稱：${workLabel(w)}｜連結：${workLink(w) || '（待補）'}`, ...list.map(line)].join('\n')));
+  } else blocks.push(es.map(line).join('\n'));
+  blocks.push(`合計：${numStr(usage(it))} / ${it.total} ${unit}`);
+  return blocks.join('\n\n');
+}
+async function buildWorkbook() {
+  const W = windowInfo();
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(b64ToBuf(PLAN_TEMPLATE_B64));
+  const ws = wb.getWorksheet(state.plan + '_範本');
+  wb.worksheets.filter(x => x !== ws).forEach(x => wb.removeWorksheet(x.id));
+  ws.name = state.plan;   // 使用說明：工作表名稱刪掉「範本」
+  wb.views = [{ x: 0, y: 0, width: 20000, height: 12000, firstSheet: 0, activeTab: 0, visibility: 'visible' }];
+
+  const MC = 7;           // 月份從 G 欄開始，共 12 欄（G～R）
+  const colW = c => ws.getColumn(c).width || 9;
+  const vlen = s => [...s].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 2 : 1), 0);
+  const linesFor = (text, width) => String(text ?? '').split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(vlen(l) / Math.max(1, width - 1))), 0);
+  const fit = (r, text, width) => {
+    const row = ws.getRow(r), need = Math.min(409, linesFor(text, width) * 15 + 6);
+    if (!row.height || row.height < need) row.height = need;
+  };
+  const mergeSpan = (r, c) => {
+    const cell = ws.getCell(r, c);
+    if (!cell.isMerged) return null;
+    const m = cell.master, same = (rr, cc) => { const x = ws.getCell(rr, cc); return x.isMerged && x.master.address === m.address; };
+    let bottom = m.row, right = m.col;
+    while (same(bottom + 1, m.col)) bottom++;
+    while (same(m.row, right + 1)) right++;
+    return { top: m.row, left: m.col, bottom, right };
+  };
+
+  // 表頭：公司、門店縣市、排期、業務；月份
+  const regs = validRegions().map(r => r.name.trim());
+  let hr = 0;
+  for (let r = 1; r <= 12 && !hr; r++) {
+    const label = ws.getCell(r, 1).text.trim(), b = ws.getCell(r, 2);
+    if (label === '公司ID' || label === '公司名稱') b.value = state.company;
+    else if (label === '門店所在縣市') b.value = `${regs.length}個門店：${regs.join('、')}`;
+    else if (label === '廣告排期') b.value = `${fmt(W.s)}~${fmt(W.e)}`;
+    else if (label === '負責業務') b.value = state.sales;
+    if (ws.getCell(r, 4).text.trim() === '權益數量') hr = r;
+  }
+  if (!hr) throw new Error('範本格式不符');
+  W.months.forEach(([y, m], i) => { ws.getCell(hr, MC + i).value = new Date(Date.UTC(y, m, 1)); });
+
+  // 權益列：用 B 欄名稱對應
+  const defs = new Map(planRows().map(d => [normName(d.name), d]));
+  for (let r = hr + 1; r <= ws.rowCount; r++) {
+    const def = defs.get(normName(ws.getCell(r, 2).text));
+    if (!def || def.kind === 'info') continue;
+    const descText = [ws.getCell(r, 5).text, ws.getCell(r, 6).text];
+    let span = mergeSpan(r, MC);
+    // APP推播：範本和 FB/IG 合併在同一格，拆出來才能逐月填
+    if (def.kind === 'push' && span && span.bottom > span.top) {
+      const master = ws.getCell(span.top, span.left), saved = master.value, style = JSON.parse(JSON.stringify(master.style));
+      ws.unMergeCells(span.top, span.left, span.bottom, span.right);
+      if (r > span.top) { ws.mergeCells(span.top, span.left, r - 1, span.right); ws.getCell(span.top, span.left).value = saved; }
+      if (r < span.bottom) ws.mergeCells(r + 1, span.left, span.bottom, span.right);
+      for (let c = span.left; c <= span.right; c++) { const x = ws.getCell(r, c); x.style = style; x.value = null; }
+      span = null;
+    }
+    if (def.kind === 'ai') {
+      const target = span ? ws.getCell(span.top, span.left) : ws.getCell(r, MC);
+      const text = aiPicks(def).map((id, i) => { const n = aiName(id), l = n === '待補' ? '' : workLink(id); return `${i + 1}. ${n}${l ? '　' + l : ''}`; }).join('\n');
+      target.value = text;
+      if (!span || span.bottom === span.top) fit(r, text, span ? Array.from({ length: span.right - span.left + 1 }, (_, i) => colW(span.left + i)).reduce((a, b) => a + b, 0) : colW(MC));
+      continue;
+    }
+    if (span && span.right > span.left) {
+      const text = runSummary(def), width = Array.from({ length: span.right - span.left + 1 }, (_, i) => colW(span.left + i)).reduce((a, b) => a + b, 0);
+      ws.getCell(span.top, span.left).value = text;
+      if (span.bottom === span.top) fit(r, text, width);
+      continue;
+    }
+    monthCells(def, W, true).forEach((t, i) => {
+      ws.getCell(r, MC + i).value = t || null;
+      if (t) fit(r, t, colW(MC + i));
+    });
+    descText.forEach((t, i) => t && fit(r, t, colW(5 + i)));
+  }
+  return wb;
+}
+$('#btnExport').onclick = async () => {
+  if (!state.generated) { toast('請先按「一鍵自動排程」', 'err'); return; }
+  if (!windowInfo()) { toast('請先填合約開始日', 'err'); return; }
+  if (typeof ExcelJS === 'undefined') { toast('匯出 Excel 需要網路連線（載入 Excel 元件失敗），請連上網路後重新整理頁面。', 'err'); return; }
+  let buf;
+  try { buf = await (await buildWorkbook()).xlsx.writeBuffer(); }
+  catch (err) { toast('產生 Excel 失敗：' + (err?.message || err), 'err'); return; }
+  download(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    `${safeName(state.company)}－100店鋪方案${state.plan}.xlsx`);
+};
+
+function renderAll() { renderBasics(); renderWorks(); renderRegions(); renderResult(); }
+renderAll();
+</script>
+</body>
+</html>
