@@ -207,8 +207,9 @@ const F_UNBOX = '編輯確認資訊，以下資料準備：\n①裝修前照片\
 const E_SOCIAL = 'FB/IG貼文連動發布，由100編輯對接安排';
 
 const info = (name, qty, desc, mat = 'x') => ({ kind: 'info', name, qty, desc, mat });
-const pin = (key, name, type, total, desc) =>
-  ({ kind: 'pin', key, name, type, total, qty: total + '次', desc, mat: type === 'work' ? F_WORK : F_CO });
+// block：每一組連續置頂幾天後換下一組（沒設定 = 以週為單位）
+const pin = (key, name, type, total, desc, block) =>
+  ({ kind: 'pin', key, name, type, total, block, qty: total + '次', desc, mat: type === 'work' ? F_WORK : F_CO });
 const expo = (key, name, type, total, chunks, max, banner) => {
   const L = total / chunks;
   let mat = banner ? F_BANNER : (type === 'work' ? F_WORK : F_CO);
@@ -272,8 +273,8 @@ const PLANS = {
   '加強版': [
     { cat: '列表優先置頂', rows: [
       info('置頂優先權', '排在標準版前', E365),
-      pin('pinWork', '作品列表-置頂', 'work', 720, '使用範例：2個作品連續12個月在xx市置頂曝光'),
-      pin('pinCo', '公司列表-置頂', 'company', 180, '使用範例：在xx市置頂曝光連續6個月'),
+      pin('pinWork', '作品列表-置頂', 'work', 720, '使用範例：2個作品連續12個月在xx市置頂曝光', 14),
+      pin('pinCo', '公司列表-置頂', 'company', 180, '使用範例：在xx市置頂曝光連續6個月', 14),
     ]},
     { cat: '品牌曝光', rows: [...brand5(12, 3, 0, '公司榜單-人氣榜'), ...banners(12, 3, 3, 6, 2, 2)] },
     { cat: '品牌專屬權益', rows: [
@@ -292,8 +293,8 @@ const PLANS = {
   '旗艦版': [
     { cat: '精準獲客', rows: [
       info('置頂優先權', '尊享 最高置頂', E365),
-      pin('pinWork', '作品列表-置頂', 'work', 2520, '使用範例：360次×1個作品×7都，或90次×7個作品×4都，按需求隨意搭配'),
-      pin('pinCo', '公司列表-置頂', 'company', 450, '使用建議：360次×1個縣市+90次×1個縣市，或90次×5個縣市，按需求隨意搭配'),
+      pin('pinWork', '作品列表-置頂', 'work', 2520, '使用範例：360次×1個作品×7都，或90次×7個作品×4都，按需求隨意搭配', 28),
+      pin('pinCo', '公司列表-置頂', 'company', 450, '使用建議：360次×1個縣市+90次×1個縣市，或90次×5個縣市，按需求隨意搭配', 28),
     ]},
     { cat: '品牌曝光', rows: [...brand5(36, 6, 6, '榜單-人氣榜'), ...banners(36, 6, 6, 18, 3, 3)] },
     { cat: '品牌專屬權益', rows: [
@@ -391,49 +392,50 @@ function mergeSegs(segs) {
 }
 
 // 置頂類：1次 = 1組（作品×區域）× 1天
+// 以「段」為單位排：入門／標準一段 7 天；加強一段 14 天、旗艦一段 28 天，每段結束換下一組。
+// 段從第一個週一起算；除不盡的天數先排最前面，再用一段沒用到的段，最後才用月底剩的幾天。
 function genPin(item, W, works, regions) {
   const combos = item.type === 'work' ? interleave(works, regions) : regions.map(r => ({ work: null, region: r.id }));
   const C = combos.length, T = item.total, warns = [];
   if (!C) return { segs: [], warns: [item.type === 'work' ? '需要至少 1 個作品和 1 個區域' : '需要至少 1 個區域'] };
-  let k, budgets;
+  const U = item.block || 7, len = r => r ? r.e - r.s + 1 : 0;
+  const slots = [];
+  for (let s0 = W.first; s0 + U - 1 <= W.L; s0 += U) slots.push({ s: s0, e: s0 + U - 1 });
+  const F = slots.length, lastEnd = F ? slots[F - 1].e : W.first - 1;
+  const tail = lastEnd < W.L ? { s: lastEnd + 1, e: W.L } : null;
+  let k = Math.min(C, Math.ceil(T / W.days));
   if (C * W.days < T) {
-    k = C; budgets = Array(C).fill(W.days);
-    const short = T - C * W.days;
-    warns.push(`組合不足，還有 ${short} 次用不完（目前 ${C} 組，每組最多 ${W.days} 天）。建議增加${item.type === 'work' ? '作品或區域' : '區域'}。`);
-  } else {
-    k = Math.min(C, Math.ceil(T / W.days));
-    const base = Math.floor(T / k), rem = T % k;
-    budgets = Array.from({ length: k }, (_, l) => base + (l < rem ? 1 : 0));
+    k = C;
+    warns.push(`組合不足，還有 ${T - C * W.days} 次用不完（目前 ${C} 組，每組最多 ${W.days} 天）。建議增加${item.type === 'work' ? '作品或區域' : '區域'}。`);
   }
+  // 整段平均分給 k 條同時進行的線；剩下的天數依序塞進各線的空檔
+  const totalUnits = Math.min(Math.floor(T / U), k * F);
+  const units = Array.from({ length: k }, (_, l) => Math.floor(totalUnits / k) + (l < totalUnits % k ? 1 : 0));
+  let rest = Math.min(T, k * W.days) - totalUnits * U;
   const segs = []; let dropped = 0;
-  const F = W.weeks.length, len = r => r ? r.e - r.s + 1 : 0;
+  const add = (s, e, c) => segs.push({ s, e, work: c.work, region: c.region });
   for (let l = 0; l < k; l++) {
-    const lane = combos.filter((_, i) => i % k === l), B = budgets[l];
-    const q = Math.min(Math.floor(B / 7), F);
-    let rest = B - q * 7;
+    const lane = combos.filter((_, i) => i % k === l), q = units[l];
     const even = state.opts.pinMode === 'even' && q < F;
     const used = Array.from({ length: q }, (_, i) => even ? Math.floor(i * F / q) : i);
-    const comboAt = i => q ? (even ? lane[i % lane.length] : lane[Math.floor(i * lane.length / q)]) : lane[0];
-    if (lane.length > Math.max(q, 1)) dropped += lane.length - Math.max(q, 1);
-    used.forEach((wi, i) => { const c = comboAt(i); segs.push({ s: W.weeks[wi].s, e: W.weeks[wi].e, work: c.work, region: c.region }); });
-    // 剩下不足一週的天數：先排最前面（緊接第一個週一之前）
-    if (rest > 0 && W.front) {
-      const x = Math.min(rest, len(W.front)), c = comboAt(0);
-      segs.push({ s: W.first - x, e: W.first - 1, work: c.work, region: c.region }); rest -= x;
-    }
-    // 最前面放不下時，接在已排的週後面（還有空的週），最後才用月底那幾天
+    // 有設定段長的（加強／旗艦）：所有組合一起輪，第 si 段第 l 條線用第 (si×k + l) 組，同一段內不會重複
+    // 以週為單位的（入門／標準）：每條線固定幾組，連續排時同一組排成一長段
+    const pick = (si, i) => item.block ? combos[(si * k + l) % C]
+      : even ? lane[i % lane.length] : lane[Math.min(lane.length - 1, Math.floor(i * lane.length / Math.max(q, 1)))];
+    used.forEach((si, i) => add(slots[si].s, slots[si].e, pick(si, i)));
+    let pieces = q;
+    if (rest > 0 && W.front) { const x = Math.min(rest, len(W.front)); add(W.first - x, W.first - 1, pick(used[0] ?? 0, 0)); rest -= x; pieces++; }
     if (rest > 0 && q < F) {
-      const free = even ? W.weeks.findIndex((_, wi) => !used.includes(wi)) : q;
-      const c = comboAt(Math.max(q - 1, 0)), x = Math.min(rest, 7);
-      segs.push({ s: W.weeks[free].s, e: W.weeks[free].s + x - 1, work: c.work, region: c.region }); rest -= x;
+      const free = even ? slots.findIndex((_, si) => !used.includes(si)) : q, x = Math.min(rest, U);
+      add(slots[free].s, slots[free].s + x - 1, pick(free, Math.max(q - 1, 0))); rest -= x; pieces++;
     }
-    if (rest > 0 && W.tail) {
-      const x = Math.min(rest, len(W.tail)), c = comboAt(Math.max(q - 1, 0));
-      segs.push({ s: W.tail.s, e: W.tail.s + x - 1, work: c.work, region: c.region }); rest -= x;
-    }
+    if (rest > 0 && tail) { const x = Math.min(rest, len(tail)); add(tail.s, tail.s + x - 1, pick(F, Math.max(q - 1, 0))); rest -= x; pieces++; }
+    if (!item.block && lane.length > pieces) dropped += lane.length - pieces;
   }
-  if (dropped) warns.push(`組合太多，有 ${dropped} 組排不到（以週為最小單位，權益只夠排到前面的組合）。`);
-  return { segs: mergeSegs(segs), warns };
+  if (item.block) { const n = Math.min(C, totalUnits + (T > totalUnits * U ? k : 0)); if (n < C) dropped = C - n; }
+  if (dropped) warns.push(`組合太多，有 ${dropped} 組排不到（權益只夠排到前面的組合）。`);
+  // 有段長的保留每一段（排期表一段寫一次）；以週為單位的把相連的週合併成一長段
+  return { segs: item.block ? segs.sort((a, b) => a.s - b.s) : mergeSegs(segs), warns };
 }
 
 // 品牌曝光類：1週 = 1個區域 × 1週；切成 chunks 段，每段輪一組
@@ -641,7 +643,7 @@ function itemCardHTML(it, W) {
   const probCount = es.filter(e => entryProblems(e, W).length).length;
   const gw = (state.genWarns[it.key] || []).map(w => `<div class="item-note">⚠ ${esc(w)}</div>`).join('');
   const typeText = it.type === 'work' ? '作品＋區域' : '區域';
-  const unitHint = it.kind === 'pin' ? '1次＝1組×1天' : '1週＝1個區域×1週';
+  const unitHint = it.kind === 'pin' ? `1次＝1組×1天${it.block ? `，每組連續 ${it.block} 天換下一組` : ''}` : '1週＝1個區域×1週';
   return `<div class="item-card" id="card-${it.key}">
     <div class="item-head">
       <div><h3>${esc(it.name)}</h3><span class="sub">${typeText}・總量 ${it.total} ${unitName(it)}（${unitHint}）${it.max ? `・最多 ${it.max} 個${it.type === 'work' ? '作品' : '縣市'}` : ''}</span></div>
@@ -735,18 +737,31 @@ function cellTexts(it, W, withLink) {
     const s = parse(e.start), en = parse(e.end);
     if (en < s) continue;
     const pieces = [];
-    if (it.kind === 'pin') { let c = s; while (c <= en) { const pe = Math.min(en, monthEnd(c)); pieces.push([c, pe]); c = pe + 1; } }
+    // 以週為單位的長段置頂按月切開；加強／旗艦的 14、28 天一段，整段寫在開始的月份
+    if (it.kind === 'pin' && !it.block) { let c = s; while (c <= en) { const pe = Math.min(en, monthEnd(c)); pieces.push([c, pe]); c = pe + 1; } }
     else pieces.push([s, en]);
     for (const [ps, pe] of pieces) {
       const mi = monthIdx(W, ps);
-      if (mi < 0) continue;
-      const lines = [regionLabel(e.region), `${md(ps)}-${md(pe)}` + (it.kind === 'pin' ? ` (${pe - ps + 1}天)` : '')];
-      if (it.type === 'work') lines.push(workLabel(e.work));
-      if (withLink && it.type === 'work' && workLink(e.work)) lines.push(workLink(e.work));
-      cells[mi].push({ s: ps, r: regionLabel(e.region), text: lines.join('\n') });
+      if (mi >= 0) cells[mi].push({ s: ps, e: pe, r: regionLabel(e.region), w: it.type === 'work' ? workLabel(e.work) : '', link: it.type === 'work' ? workLink(e.work) : '' });
     }
   }
-  return cells.map(list => list.sort((a, b) => a.s - b.s || a.r.localeCompare(b.r)).map(x => x.text).join('\n\n'));
+  return cells.map(list => {
+    list.sort((a, b) => a.s - b.s || a.e - b.e || a.r.localeCompare(b.r) || a.w.localeCompare(b.w));
+    if (it.kind !== 'pin') return list.map(x => [x.r, `${md(x.s)}-${md(x.e)}`, x.w, withLink ? x.link : ''].filter(Boolean).join('\n')).join('\n\n');
+    // 置頂類同一個月常有好幾組同時在跑：同一段走期只寫一次，下面每組一行（縣市｜作品）；連結統一列在表頭的作品清單
+    const groups = [];
+    list.forEach(x => {
+      const g = groups[groups.length - 1];
+      if (g && g.s === x.s && g.e === x.e) g.items.push(x); else groups.push({ s: x.s, e: x.e, items: [x] });
+    });
+    return groups.map(g => {
+      const head = `${md(g.s)}-${md(g.e)} (${g.e - g.s + 1}天)`;
+      if (it.type !== 'work') return [head, g.items.map(x => x.r).join('、')].join('\n');
+      const byRegion = new Map();
+      g.items.forEach(x => { if (!byRegion.has(x.r)) byRegion.set(x.r, []); byRegion.get(x.r).push(x.w); });
+      return [head, ...[...byRegion].map(([r, ws]) => `${r}｜${ws.join('、')}`)].join('\n');
+    }).join('\n\n');
+  });
 }
 function monthCells(row, W, withLink) {
   if (row.kind === 'pin' || row.kind === 'expo') return cellTexts(row, W, withLink);
@@ -910,21 +925,6 @@ function b64ToBuf(b64) {
   return u.buffer;
 }
 const normName = s => String(s || '').replace(/横/g, '橫').replace(/\s+/g, '');
-// 範本裡月份欄整列合併的權益（例如旗艦版的置頂），照範本寫成一段文字
-function runSummary(it) {
-  const es = state.entries.filter(e => e.item === it.key)
-    .sort((a, b) => a.start.localeCompare(b.start) || regionLabel(a.region).localeCompare(regionLabel(b.region)));
-  const unit = unitName(it), amt = d => it.kind === 'pin' ? d : numStr(d / 7);
-  const line = e => `曝光縣市：${regionLabel(e.region)}｜走期：${e.start}~${e.end}（${amt(entryDays(e))}${unit}）`;
-  const blocks = [];
-  if (it.type === 'work') {
-    const byWork = new Map();
-    es.forEach(e => { if (!byWork.has(e.work)) byWork.set(e.work, []); byWork.get(e.work).push(e); });
-    byWork.forEach((list, w) => blocks.push([`作品名稱：${workLabel(w)}｜連結：${workLink(w) || '（待補）'}`, ...list.map(line)].join('\n')));
-  } else blocks.push(es.map(line).join('\n'));
-  blocks.push(`合計：${numStr(usage(it))} / ${it.total} ${unit}`);
-  return blocks.join('\n\n');
-}
 async function buildWorkbook() {
   const W = windowInfo();
   const wb = new ExcelJS.Workbook();
@@ -935,12 +935,17 @@ async function buildWorkbook() {
   wb.views = [{ x: 0, y: 0, width: 20000, height: 12000, firstSheet: 0, activeTab: 0, visibility: 'visible' }];
 
   const MC = 7;           // 月份從 G 欄開始，共 12 欄（G～R）
-  const colW = c => ws.getColumn(c).width || 9;
+  const colW = c => ws.getColumn(c).width || ws.properties.defaultColWidth || 12.63;
   const vlen = s => [...s].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 2 : 1), 0);
   const linesFor = (text, width) => String(text ?? '').split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(vlen(l) / Math.max(1, width - 1))), 0);
   const fit = (r, text, width) => {
     const row = ws.getRow(r), need = Math.min(409, linesFor(text, width) * 15 + 6);
     if (!row.height || row.height < need) row.height = need;
+  };
+  // 有填內容的格子：自動換行、一般黑字（範本有些格子帶超連結的藍字底線樣式）
+  const plain = cell => {
+    cell.alignment = { ...(cell.alignment || {}), wrapText: true, vertical: 'top' };
+    cell.font = { ...(cell.font || {}), underline: false, color: { argb: 'FF000000' } };
   };
   const mergeSpan = (r, c) => {
     const cell = ws.getCell(r, c);
@@ -966,6 +971,20 @@ async function buildWorkbook() {
   if (!hr) throw new Error('範本格式不符');
   W.months.forEach(([y, m], i) => { ws.getCell(hr, MC + i).value = new Date(Date.UTC(y, m, 1)); });
 
+  // 表頭右邊（G～R、月份標題上方）：作品清單和連結，跟一二設計那份的放法一樣
+  const top = hr - 2, works = validWorks();
+  if (top >= 1 && works.length) {
+    const text = '作品清單（客戶提供）\n' + works.map(w => `作品${letter(state.works.indexOf(w))}：${w.name.trim()}｜${w.link.trim() || '連結待補'}`).join('\n');
+    ws.mergeCells(1, MC, top, MC + 11);
+    const c = ws.getCell(1, MC);
+    c.value = text;
+    c.font = { name: 'Arial', size: 10, color: { argb: 'FF000000' } };
+    c.alignment = { wrapText: true, vertical: 'top', horizontal: 'left' };
+    const width = Array.from({ length: 12 }, (_, i) => colW(MC + i)).reduce((a, b) => a + b, 0);
+    const per = Math.ceil((linesFor(text, width) * 15 + 6) / top);
+    for (let r = 1; r <= top; r++) { const row = ws.getRow(r); if (!row.height || row.height < per) row.height = per; }
+  }
+
   // 權益列：用 B 欄名稱對應
   const defs = new Map(planRows().map(d => [normName(d.name), d]));
   for (let r = hr + 1; r <= ws.rowCount; r++) {
@@ -973,31 +992,26 @@ async function buildWorkbook() {
     if (!def || def.kind === 'info') continue;
     const descText = [ws.getCell(r, 5).text, ws.getCell(r, 6).text];
     let span = mergeSpan(r, MC);
-    // APP推播：範本和 FB/IG 合併在同一格，拆出來才能逐月填
-    if (def.kind === 'push' && span && span.bottom > span.top) {
-      const master = ws.getCell(span.top, span.left), saved = master.value, style = JSON.parse(JSON.stringify(master.style));
+    // 範本裡月份欄合併的格子（旗艦版的置頂、和 FB/IG 合併的 APP推播）拆成 12 格，跟其他權益一樣逐月填
+    if (def.kind !== 'ai' && span) {
+      const master = ws.getCell(span.top, span.left), saved = master.value, style = JSON.stringify(master.style);
       ws.unMergeCells(span.top, span.left, span.bottom, span.right);
       if (r > span.top) { ws.mergeCells(span.top, span.left, r - 1, span.right); ws.getCell(span.top, span.left).value = saved; }
       if (r < span.bottom) ws.mergeCells(r + 1, span.left, span.bottom, span.right);
-      for (let c = span.left; c <= span.right; c++) { const x = ws.getCell(r, c); x.style = style; x.value = null; }
+      for (let c = span.left; c <= span.right; c++) { const x = ws.getCell(r, c); x.style = JSON.parse(style); x.value = null; }
       span = null;
     }
     if (def.kind === 'ai') {
       const target = span ? ws.getCell(span.top, span.left) : ws.getCell(r, MC);
       const text = aiPicks(def).map((id, i) => { const n = aiName(id), l = n === '待補' ? '' : workLink(id); return `${i + 1}. ${n}${l ? '　' + l : ''}`; }).join('\n');
-      target.value = text;
+      target.value = text; plain(target);
       if (!span || span.bottom === span.top) fit(r, text, span ? Array.from({ length: span.right - span.left + 1 }, (_, i) => colW(span.left + i)).reduce((a, b) => a + b, 0) : colW(MC));
       continue;
     }
-    if (span && span.right > span.left) {
-      const text = runSummary(def), width = Array.from({ length: span.right - span.left + 1 }, (_, i) => colW(span.left + i)).reduce((a, b) => a + b, 0);
-      ws.getCell(span.top, span.left).value = text;
-      if (span.bottom === span.top) fit(r, text, width);
-      continue;
-    }
     monthCells(def, W, true).forEach((t, i) => {
-      ws.getCell(r, MC + i).value = t || null;
-      if (t) fit(r, t, colW(MC + i));
+      const cell = ws.getCell(r, MC + i);
+      cell.value = t || null;
+      if (t) { plain(cell); fit(r, t, colW(MC + i)); }
     });
     descText.forEach((t, i) => t && fit(r, t, colW(5 + i)));
   }
