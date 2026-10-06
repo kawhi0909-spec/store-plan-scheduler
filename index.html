@@ -37,6 +37,11 @@ main{max-width:1280px;margin:0 auto;padding:20px 16px 80px}
 .card h2{margin:0 0 14px;font-size:16px;display:flex;align-items:center;gap:8px}
 .card h2 .num{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--on-accent);font-size:12px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+/* 基本資料：電腦版四欄，合約日期在上、廣告日期在下；方案放在公司名稱、負責業務下面 */
+.basic-grid{display:grid;gap:14px;grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-areas:"co sales cs ce" "plan plan as ae"}
+/* 平板、手機：兩欄，依序 公司／業務、合約日期、廣告日期、方案 */
+@media (max-width:900px){.basic-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"co sales" "cs ce" "as ae" "plan plan"}}
 .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
 .field input,.field select{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card)}
 .field input[readonly]{background:var(--bg);color:var(--muted)}
@@ -127,7 +132,7 @@ table{border-collapse:collapse;width:100%}
 <header class="topbar">
   <div>
     <div class="eyebrow">100室內設計・店鋪方案</div>
-    <h1>店鋪方案排期工具 <span style="font-size:12px;font-weight:400;opacity:.75">版本 ap.v3</span></h1>
+    <h1>店鋪方案排期工具 <span style="font-size:12px;font-weight:400;opacity:.75">版本 ap.v5</span></h1>
   </div>
   <div class="actions">
     <button class="btn" id="btnLoad">讀檔</button>
@@ -140,18 +145,15 @@ table{border-collapse:collapse;width:100%}
 <main>
   <section class="card">
     <h2><span class="num">1</span>基本資料</h2>
-    <div class="grid">
-      <div class="field"><label>公司名稱</label><input id="fCompany" placeholder="請輸入公司全名"></div>
-      <div class="field"><label>負責業務</label><input id="fSales" placeholder="請輸入業務名字"></div>
-      <div class="field"><label>合約開始日</label><input id="fStart" type="date"></div>
-      <div class="field"><label>合約結束日（自動，共365天）</label><input id="fEnd" readonly></div>
-      <div class="field"><label>廣告開始日</label><input id="fAdStart" type="date">
+    <div class="basic-grid">
+      <div class="field" style="grid-area:co"><label>公司名稱</label><input id="fCompany" placeholder="請輸入公司全名"></div>
+      <div class="field" style="grid-area:sales"><label>負責業務</label><input id="fSales" placeholder="請輸入業務名字"></div>
+      <div class="field" style="grid-area:cs"><label>合約開始日</label><input id="fStart" type="date"></div>
+      <div class="field" style="grid-area:ce"><label>合約結束日（自動，共365天）</label><input id="fEnd" readonly></div>
+      <div style="grid-area:plan"><div class="opt-title">方案</div><div class="seg" id="planSeg"></div></div>
+      <div class="field" style="grid-area:as"><label>廣告開始日</label><input id="fAdStart" type="date">
         <div class="field-rule">廣告開始日須在合約開始日後30日內配置</div><div class="field-err" id="adErr"></div></div>
-      <div class="field"><label>廣告結束日（同合約結束日）</label><input id="fAdEnd" readonly></div>
-    </div>
-    <div style="margin-top:16px">
-      <div class="opt-title">方案</div>
-      <div class="seg" id="planSeg"></div>
+      <div class="field" style="grid-area:ae"><label>廣告結束日（同合約結束日）</label><input id="fAdEnd" readonly></div>
     </div>
     <div class="hint" id="windowHint"></div>
   </section>
