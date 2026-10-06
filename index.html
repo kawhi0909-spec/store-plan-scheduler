@@ -42,6 +42,9 @@ main{max-width:1280px;margin:0 auto;padding:20px 16px 80px}
 .field input[readonly]{background:var(--bg);color:var(--muted)}
 input:focus,select:focus{outline:2px solid #9DB1E6;outline-offset:-1px}
 .hint{font-size:12px;color:var(--muted);margin-top:4px}
+.field-rule{font-size:12px;color:var(--red);margin-top:4px}
+.field-err{font-size:12px;color:var(--red);font-weight:700;margin-top:2px}
+.field input.invalid{border-color:var(--red);background:var(--red-soft)}
 .seg{display:inline-flex;background:var(--track);border-radius:9px;padding:3px;gap:2px;flex-wrap:wrap}
 .seg button{border:0;background:transparent;padding:6px 14px;border-radius:7px;cursor:pointer;color:var(--muted);font-weight:600}
 .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
@@ -124,7 +127,7 @@ table{border-collapse:collapse;width:100%}
 <header class="topbar">
   <div>
     <div class="eyebrow">100室內設計・店鋪方案</div>
-    <h1>店鋪方案排期工具 <span style="font-size:12px;font-weight:400;opacity:.75">版本 ap.v2</span></h1>
+    <h1>店鋪方案排期工具 <span style="font-size:12px;font-weight:400;opacity:.75">版本 ap.v3</span></h1>
   </div>
   <div class="actions">
     <button class="btn" id="btnLoad">讀檔</button>
@@ -142,6 +145,9 @@ table{border-collapse:collapse;width:100%}
       <div class="field"><label>負責業務</label><input id="fSales" placeholder="請輸入業務名字"></div>
       <div class="field"><label>合約開始日</label><input id="fStart" type="date"></div>
       <div class="field"><label>合約結束日（自動，共365天）</label><input id="fEnd" readonly></div>
+      <div class="field"><label>廣告開始日</label><input id="fAdStart" type="date">
+        <div class="field-rule">廣告開始日須在合約開始日後30日內配置</div><div class="field-err" id="adErr"></div></div>
+      <div class="field"><label>廣告結束日（同合約結束日）</label><input id="fAdEnd" readonly></div>
     </div>
     <div style="margin-top:16px">
       <div class="opt-title">方案</div>
@@ -174,7 +180,7 @@ table{border-collapse:collapse;width:100%}
     </div>
     <div class="run-row">
       <button class="btn primary big" id="btnRun">一鍵自動排程</button>
-      <span class="hint" style="margin:0">從合約開始日後的第一個週一起排，以週為單位，把權益全部用完。</span>
+      <span class="hint" style="margin:0">從廣告開始日後的第一個週一起排，以週為單位，把權益全部用完。</span>
     </div>
     <div id="runMsg"></div>
   </section>
@@ -323,7 +329,7 @@ const OPTS = {
 /* ================= 狀態 ================= */
 const uid = () => Math.random().toString(36).slice(2, 10);
 let state = {
-  company: '', sales: '', plan: '標準版', start: '',
+  company: '', sales: '', plan: '標準版', start: '', adStart: '',
   works: [{ id: uid(), name: '', link: '' }],
   regions: [{ id: uid(), name: '' }],
   opts: { pinMode: 'cont', expoMode: 'even', expoStagger: 'stagger' },
@@ -344,11 +350,21 @@ const monthEnd = n => { const [y, m] = ym(n); return Date.UTC(y, m + 1, 0) / DAY
 const gcd = (a, b) => b ? gcd(b, a % b) : a;
 const WEEKDAY = '日一二三四五六';
 
-// 合約 365 天；排期表固定 12 個月（從開始日的月份起），排程要在第 12 個月月底（L）前走完。
-// 週次從第一個週一起算，只用完整的週；不足一週的天數先排在最前面（front），再排最後面（tail）。
+// 廣告開始日：預設等於合約開始日，只能落在合約開始日當天到之後 30 天內
+function adError() {
+  if (!state.start) return '';
+  if (!state.adStart) return '請選擇廣告開始日';
+  const d = parse(state.adStart) - parse(state.start);
+  if (d < 0) return '廣告開始日不能早於合約開始日，請重新選擇';
+  if (d > 30) return `目前是合約開始日後第 ${d} 天，超過 30 天，請重新選擇`;
+  return '';
+}
+// 合約 365 天（cs～e）；廣告期間 = 廣告開始日（s）～合約結束日（e）。
+// 排期表固定 12 個月（從廣告開始日的月份起），排程要在第 12 個月月底（L）前走完。
+// 週次從廣告開始後第一個週一起算；不足一段的天數先排在最前面（front），再排最後面（tail）。
 function windowInfo() {
-  if (!state.start) return null;
-  const s = parse(state.start), e = s + 364;
+  if (!state.start || adError()) return null;
+  const cs = parse(state.start), s = parse(state.adStart), e = cs + 364;
   const [y0, m0] = ym(s);
   const months = Array.from({ length: 12 }, (_, i) => [y0 + Math.floor((m0 + i) / 12), (m0 + i) % 12]);
   const L = Math.min(e, Date.UTC(y0, m0 + 12, 0) / DAY);
@@ -358,7 +374,7 @@ function windowInfo() {
   const lastEnd = weeks.length ? weeks[weeks.length - 1].e : first - 1;
   const front = first > s ? { s, e: first - 1 } : null;
   const tail = lastEnd < L ? { s: lastEnd + 1, e: L } : null;
-  return { s, e, L, first, weeks, full: weeks, front, tail, days: L - s + 1, months };
+  return { cs, s, e, L, first, weeks, full: weeks, front, tail, days: L - s + 1, months };
 }
 const monthIdx = (W, n) => { const [y, m] = ym(n); return W.months.findIndex(x => x[0] === y && x[1] === m); };
 
@@ -413,7 +429,8 @@ function genPin(item, W, works, regions) {
   const units = Array.from({ length: k }, (_, l) => Math.floor(totalUnits / k) + (l < totalUnits % k ? 1 : 0));
   let rest = Math.min(T, k * W.days) - totalUnits * U;
   const segs = []; let dropped = 0;
-  const add = (s, e, c) => segs.push({ s, e, work: c.work, region: c.region });
+  const add = (s, e, c) => { const g = { s, e, work: c.work, region: c.region }; segs.push(g); return g; };
+  const lanes = [];
   for (let l = 0; l < k; l++) {
     const lane = combos.filter((_, i) => i % k === l), q = units[l];
     const even = state.opts.pinMode === 'even' && q < F;
@@ -422,16 +439,52 @@ function genPin(item, W, works, regions) {
     // 以週為單位的（入門／標準）：每條線固定幾組，連續排時同一組排成一長段
     const pick = (si, i) => item.block ? combos[(si * k + l) % C]
       : even ? lane[i % lane.length] : lane[Math.min(lane.length - 1, Math.floor(i * lane.length / Math.max(q, 1)))];
-    used.forEach((si, i) => add(slots[si].s, slots[si].e, pick(si, i)));
-    let pieces = q;
-    if (rest > 0 && W.front) { const x = Math.min(rest, len(W.front)); add(W.first - x, W.first - 1, pick(used[0] ?? 0, 0)); rest -= x; pieces++; }
-    if (rest > 0 && q < F) {
-      const free = even ? slots.findIndex((_, si) => !used.includes(si)) : q, x = Math.min(rest, U);
-      add(slots[free].s, slots[free].s + x - 1, pick(free, Math.max(q - 1, 0))); rest -= x; pieces++;
-    }
-    if (rest > 0 && tail) { const x = Math.min(rest, len(tail)); add(tail.s, tail.s + x - 1, pick(F, Math.max(q - 1, 0))); rest -= x; pieces++; }
-    if (!item.block && lane.length > pieces) dropped += lane.length - pieces;
+    const placed = used.map((si, i) => add(slots[si].s, slots[si].e, pick(si, i)));
+    lanes.push({ lane, q, used, even, pick, placed, pieces: q });
   }
+  // 加強／旗艦（連續排）：剩下的天數平均分給各線，先加進第一段（含廣告開始日到第一個週一前那幾天），
+  // 每段總天數不超過該段開始月份的天數，超過就加到下一段，依此類推；後面的段順延
+  if (item.block && state.opts.pinMode === 'cont' && C * W.days >= T && rest > 0) {
+    const plan = [], dim = n => new Date(monthEnd(n) * DAY).getUTCDate();
+    let ok = true;
+    lanes.forEach((ln, l) => {
+      let ex = Math.floor(rest / k) + (l < rest % k ? 1 : 0);
+      let pre = Math.min(ex, len(W.front));
+      while (pre > 0 && U + pre > dim(W.first - pre)) pre--;
+      ex -= pre;
+      let cur = W.first - pre;
+      for (let i = 0; i < ln.q; i++) {
+        let n = U + (i === 0 ? pre : 0);
+        const more = Math.min(ex, Math.max(0, dim(cur) - n));
+        n += more; ex -= more;
+        plan.push([cur, cur + n - 1, ln.pick(i, i)]); cur += n;
+      }
+      if (ex > 0) { plan.push([cur, cur + ex - 1, ln.pick(ln.q, ln.q)]); cur += ex; }
+      if (cur - 1 > W.L) ok = false;
+    });
+    if (ok) { segs.length = 0; plan.forEach(([a, b, c]) => add(a, b, c)); rest = 0; }
+  }
+  // 剩下不足一段的天數：先把每條線「最前面」（開始日到第一個週一前）排滿，併進該線的第一段；
+  // 還有剩才用沒排到的段，最後才用月底剩的幾天
+  for (const ln of lanes) {
+    if (rest <= 0 || !W.front) break;
+    const x = Math.min(rest, len(W.front)), first = ln.placed[0];
+    if (first && first.s === W.first) first.s = W.first - x;
+    else { add(W.first - x, W.first - 1, ln.pick(ln.used[0] ?? 0, 0)); ln.pieces++; }
+    rest -= x;
+  }
+  for (const ln of lanes) {
+    if (rest <= 0) break;
+    if (ln.q >= F) continue;
+    const free = ln.even ? slots.findIndex((_, si) => !ln.used.includes(si)) : ln.q, x = Math.min(rest, U);
+    add(slots[free].s, slots[free].s + x - 1, ln.pick(free, Math.max(ln.q - 1, 0))); rest -= x; ln.pieces++;
+  }
+  for (const ln of lanes) {
+    if (rest <= 0 || !tail) break;
+    const x = Math.min(rest, len(tail));
+    add(tail.s, tail.s + x - 1, ln.pick(F, Math.max(ln.q - 1, 0))); rest -= x; ln.pieces++;
+  }
+  if (!item.block) lanes.forEach(ln => { if (ln.lane.length > ln.pieces) dropped += ln.lane.length - ln.pieces; });
   if (item.block) { const n = Math.min(C, totalUnits + (T > totalUnits * U ? k : 0)); if (n < C) dropped = C - n; }
   if (dropped) warns.push(`組合太多，有 ${dropped} 組排不到（權益只夠排到前面的組合）。`);
   // 有段長的保留每一段（排期表一段寫一次）；以週為單位的把相連的週合併成一長段
@@ -485,7 +538,7 @@ function generateAll() {
   }
   state.entries = entries; state.genWarns = genWarns; state.generated = true;
   state.aiPicks = defaultAiPicks(); state.pushPicks = defaultPushPicks();
-  state.scheduledFor = { plan: state.plan, start: state.start };
+  state.scheduledFor = { plan: state.plan, start: state.start, adStart: state.adStart };
 }
 
 /* ================= 用量計算與檢查 ================= */
@@ -506,7 +559,7 @@ function entryProblems(e, W) {
   const p = [];
   const item = itemByKey(e.item);
   if (parse(e.end) < parse(e.start)) p.push('結束日早於開始日');
-  if (W && (parse(e.start) < W.s || parse(e.end) > W.L)) p.push('超出排期表的 12 個月');
+  if (W && (parse(e.start) < W.s || parse(e.end) > W.L)) p.push('超出廣告期間或排期表的 12 個月');
   if (!state.regions.some(r => r.id === e.region)) p.push('區域已刪除');
   if (item && item.type === 'work' && !state.works.some(w => w.id === e.work)) p.push('作品已刪除');
   const clash = state.entries.some(o => o !== e && o.item === e.item && o.region === e.region && (o.work || '') === (e.work || '')
@@ -547,6 +600,7 @@ function renderBasics() {
   $('#fCompany').value = state.company;
   $('#fSales').value = state.sales;
   $('#fStart').value = state.start;
+  $('#fAdStart').value = state.adStart;
   renderSeg($('#planSeg'), PLAN_NAMES.map(p => [p, p]), state.plan, pickPlan);
   document.querySelectorAll('[data-opt]').forEach(el => {
     const k = el.dataset.opt;
@@ -555,10 +609,15 @@ function renderBasics() {
   renderWindow();
 }
 function renderWindow() {
-  const W = windowInfo();
-  $('#fEnd').value = W ? fmt(W.e) : '';
+  const W = windowInfo(), err = adError(), cs = state.start ? parse(state.start) : null;
+  $('#fEnd').value = cs != null ? fmt(cs + 364) : '';
+  $('#fAdEnd').value = cs != null ? fmt(cs + 364) : '';
+  const ad = $('#fAdStart');
+  ad.min = cs != null ? fmt(cs) : ''; ad.max = cs != null ? fmt(cs + 30) : '';
+  ad.classList.toggle('invalid', !!err);
+  $('#adErr').textContent = err;
   $('#windowHint').textContent = W
-    ? `合約 ${fmt(W.s)}（週${WEEKDAY[dow(W.s)]}）～ ${fmt(W.e)}。排期表 12 個月（${W.months[0][0]}年${W.months[0][1] + 1}月～${W.months[11][0]}年${W.months[11][1] + 1}月），排程範圍 ${fmt(W.s)}～${fmt(W.L)}：從 ${fmt(W.first)}（週一）起按週排${W.front ? `，不足一週的天數排在最前面（${md(W.front.s)}-${md(W.front.e)}）` : ''}。`
+    ? `合約 ${fmt(W.cs)} ～ ${fmt(W.e)}；廣告 ${fmt(W.s)}（週${WEEKDAY[dow(W.s)]}）～ ${fmt(W.e)}。排期表 12 個月（${W.months[0][0]}年${W.months[0][1] + 1}月～${W.months[11][0]}年${W.months[11][1] + 1}月），排程範圍 ${fmt(W.s)}～${fmt(W.L)}：從 ${fmt(W.first)}（週一）起按週排${W.front ? `，不足一週的天數排在最前面（${md(W.front.s)}-${md(W.front.e)}）` : ''}。`
     : '';
 }
 async function pickPlan(p) {
@@ -596,13 +655,17 @@ function renderResult() {
   const body = $('#resultBody');
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   const W = windowInfo();
+  if (state.generated && !W) {
+    body.innerHTML = `<div class="notice err">廣告開始日不符合規定，請先修正上方的廣告開始日，排程才會顯示。</div>`;
+    return;
+  }
   if (!state.generated) {
     body.innerHTML = `<div class="empty">填好上面的資料後，按「一鍵自動排程」就會出現在這裡。<br><button class="btn" data-demo style="margin-top:12px">先載入範例看看</button></div>`;
     return;
   }
   let stale = '';
   const sf = state.scheduledFor;
-  if (sf && sf.start !== state.start) stale = `<div class="notice warn">合約開始日已變更（原本排程是以 ${sf.start} 起算），建議重新按「一鍵自動排程」。</div>`;
+  if (sf && (sf.start !== state.start || (sf.adStart || sf.start) !== state.adStart)) stale = `<div class="notice warn">合約開始日或廣告開始日已變更（原本排程的廣告開始日是 ${sf.adStart || sf.start}），建議重新按「一鍵自動排程」。</div>`;
   body.innerHTML = stale + (tab === 'detail' ? detailHTML(W) : gridHTML(W));
 }
 
@@ -786,7 +849,14 @@ function gridHTML(W) {
 /* ================= 事件 ================= */
 $('#fCompany').addEventListener('input', e => { state.company = e.target.value; markDirty(); });
 $('#fSales').addEventListener('input', e => { state.sales = e.target.value; markDirty(); });
-$('#fStart').addEventListener('change', e => { state.start = e.target.value; markDirty(); renderWindow(); renderResult(); });
+$('#fStart').addEventListener('change', e => {
+  const prev = state.start;
+  state.start = e.target.value;
+  // 廣告開始日沒動過（還等於原本的合約開始日）就跟著改
+  if (!state.adStart || state.adStart === prev) { state.adStart = state.start; $('#fAdStart').value = state.adStart; }
+  markDirty(); renderWindow(); renderResult();
+});
+$('#fAdStart').addEventListener('change', e => { state.adStart = e.target.value; markDirty(); renderWindow(); renderResult(); });
 $('#cityList').innerHTML = CITIES.map(c => `<option value="${c}">`).join('');
 
 $('#addWork').onclick = () => { state.works.push({ id: uid(), name: '', link: '' }); markDirty(); renderWorks(); $('#worksList').lastElementChild.querySelector('input').focus(); };
@@ -816,6 +886,7 @@ $('#btnRun').onclick = async () => {
   const errs = [];
   if (!state.company.trim()) errs.push('請填公司名稱');
   if (!state.start) errs.push('請填合約開始日');
+  else if (adError()) errs.push('廣告開始日須在合約開始日後30日內配置：' + adError());
   if (!validWorks().length) errs.push('請至少填 1 個作品名稱');
   if (!validRegions().length) errs.push('請至少填 1 個門市所在縣市');
   const msg = $('#runMsg');
@@ -852,7 +923,7 @@ $('#resultBody').addEventListener('change', e => {
 $('#resultBody').addEventListener('click', e => {
   if (e.target.closest('[data-demo]')) {
     Object.assign(state, {
-      company: '範例設計（示範資料）', sales: '業務姓名', plan: '標準版', start: fmt(parse(new Date().toISOString().slice(0, 10))),
+      company: '範例設計（示範資料）', sales: '業務姓名', plan: '標準版', start: fmt(parse(new Date().toISOString().slice(0, 10))), adStart: fmt(parse(new Date().toISOString().slice(0, 10))),
       works: [{ id: uid(), name: '範例作品一', link: '' }, { id: uid(), name: '範例作品二', link: '' }],
       regions: [{ id: uid(), name: '台中市' }, { id: uid(), name: '彰化縣' }],
     });
@@ -912,6 +983,7 @@ $('#fileLoad').onchange = async e => {
     const data = JSON.parse(await f.text());
     if (data.app !== 'store-plan-scheduler' || !data.state || !PLANS[data.state.plan]) throw new Error('格式不符');
     state = { ...state, ...data.state, opts: { ...state.opts, ...data.state.opts } };
+    if (!state.adStart) state.adStart = state.start;
     dirty = false; $('#runMsg').innerHTML = '';
     renderAll();
   } catch (err) { toast('讀檔失敗：這不是本工具存的檔案（' + err.message + '）', 'err'); }
@@ -964,7 +1036,7 @@ async function buildWorkbook() {
     const label = ws.getCell(r, 1).text.trim(), b = ws.getCell(r, 2);
     if (label === '公司ID' || label === '公司名稱') b.value = state.company;
     else if (label === '門店所在縣市') b.value = `${regs.length}個門店：${regs.join('、')}`;
-    else if (label === '廣告排期') b.value = `${fmt(W.s)}~${fmt(W.e)}`;
+    else if (label === '廣告排期') b.value = `${fmt(W.cs)}~${fmt(W.e)}`;   // 廣告排期欄填合約期間
     else if (label === '負責業務') b.value = state.sales;
     if (ws.getCell(r, 4).text.trim() === '權益數量') hr = r;
   }
@@ -1019,7 +1091,8 @@ async function buildWorkbook() {
 }
 $('#btnExport').onclick = async () => {
   if (!state.generated) { toast('請先按「一鍵自動排程」', 'err'); return; }
-  if (!windowInfo()) { toast('請先填合約開始日', 'err'); return; }
+  if (!state.start) { toast('請先填合約開始日', 'err'); return; }
+  if (adError()) { toast('廣告開始日須在合約開始日後30日內配置，請先修正', 'err'); return; }
   if (typeof ExcelJS === 'undefined') { toast('匯出 Excel 需要網路連線（載入 Excel 元件失敗），請連上網路後重新整理頁面。', 'err'); return; }
   let buf;
   try { buf = await (await buildWorkbook()).xlsx.writeBuffer(); }
