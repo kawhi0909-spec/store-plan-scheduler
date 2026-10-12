@@ -262,8 +262,8 @@ const PLANS = {
   '標準版': [
     { cat: '列表優先置頂', rows: [
       info('置頂優先權', '排在入門版前', E365),
-      pin('pinWork', '作品列表-置頂', 'work', 360, '使用範例：1個作品連續12個月在xx市置頂曝光'),
-      pin('pinCo', '公司列表-置頂', 'company', 90, '使用範例：在xx市置頂曝光連續每月15天共6個月'),
+      pin('pinWork', '作品列表-置頂', 'work', 360, '使用範例：1個作品連續12個月在xx市置頂曝光', 30),
+      pin('pinCo', '公司列表-置頂', 'company', 90, '使用範例：在xx市置頂曝光連續每月15天共6個月', 15),
     ]},
     { cat: '品牌曝光', rows: brand5(5, 5, 0, '公司榜單-人氣榜') },
     { cat: '品牌專屬權益', rows: [
@@ -281,8 +281,8 @@ const PLANS = {
   '加強版': [
     { cat: '列表優先置頂', rows: [
       info('置頂優先權', '排在標準版前', E365),
-      pin('pinWork', '作品列表-置頂', 'work', 720, '使用範例：2個作品連續12個月在xx市置頂曝光', 14),
-      pin('pinCo', '公司列表-置頂', 'company', 180, '使用範例：在xx市置頂曝光連續6個月', 14),
+      pin('pinWork', '作品列表-置頂', 'work', 720, '使用範例：2個作品連續12個月在xx市置頂曝光', 30),
+      pin('pinCo', '公司列表-置頂', 'company', 180, '使用範例：在xx市置頂曝光連續6個月', 15),
     ]},
     { cat: '品牌曝光', rows: [...brand5(12, 3, 0, '公司榜單-人氣榜'), ...banners(12, 3, 3, 6, 2, 2)] },
     { cat: '品牌專屬權益', rows: [
@@ -301,8 +301,8 @@ const PLANS = {
   '旗艦版': [
     { cat: '精準獲客', rows: [
       info('置頂優先權', '尊享 最高置頂', E365),
-      pin('pinWork', '作品列表-置頂', 'work', 2520, '使用範例：360次×1個作品×7都，或90次×7個作品×4都，按需求隨意搭配', 28),
-      pin('pinCo', '公司列表-置頂', 'company', 450, '使用建議：360次×1個縣市+90次×1個縣市，或90次×5個縣市，按需求隨意搭配', 28),
+      pin('pinWork', '作品列表-置頂', 'work', 2520, '使用範例：360次×1個作品×7都，或90次×7個作品×4都，按需求隨意搭配', 30),
+      pin('pinCo', '公司列表-置頂', 'company', 450, '使用建議：360次×1個縣市+90次×1個縣市，或90次×5個縣市，按需求隨意搭配', 15),
     ]},
     { cat: '品牌曝光', rows: [...brand5(36, 6, 6, '榜單-人氣榜'), ...banners(36, 6, 6, 18, 3, 3)] },
     { cat: '品牌專屬權益', rows: [
@@ -410,7 +410,7 @@ function mergeSegs(segs) {
 }
 
 // 置頂類：1次 = 1組（作品×區域）× 1天
-// 以「段」為單位排：入門／標準一段 7 天；加強一段 14 天、旗艦一段 28 天，每段結束換下一組。
+// 以「段」為單位排（也是最小單位）：作品置頂 入門 7 天、其他 30 天；公司置頂 入門 7 天、其他 15 天。每段結束換下一組。
 // 段從第一個週一起算；除不盡的天數先排最前面，再用一段沒用到的段，最後才用月底剩的幾天。
 function genPin(item, W, works, regions) {
   const combos = item.type === 'work' ? interleave(works, regions) : regions.map(r => ({ work: null, region: r.id }));
@@ -424,7 +424,6 @@ function genPin(item, W, works, regions) {
   let k = Math.min(C, Math.ceil(T / W.days));
   if (C * W.days < T) {
     k = C;
-    warns.push(`組合不足，還有 ${T - C * W.days} 次用不完（目前 ${C} 組，每組最多 ${W.days} 天）。建議增加${item.type === 'work' ? '作品或區域' : '區域'}。`);
   }
   // 整段平均分給 k 條同時進行的線；剩下的天數依序塞進各線的空檔
   const totalUnits = Math.min(Math.floor(T / U), k * F);
@@ -490,7 +489,21 @@ function genPin(item, W, works, regions) {
   if (item.block) { const n = Math.min(C, totalUnits + (T > totalUnits * U ? k : 0)); if (n < C) dropped = C - n; }
   if (dropped) warns.push(`組合太多，有 ${dropped} 組排不到（權益只夠排到前面的組合）。`);
   // 有段長的保留每一段（排期表一段寫一次）；以週為單位的把相連的週合併成一長段
-  return { segs: item.block ? segs.sort((a, b) => a.s - b.s) : mergeSegs(segs), warns };
+  let out = item.block ? segs.sort((a, b) => a.s - b.s) : mergeSegs(segs);
+  // 置頂有最小單位（作品置頂 入門 7／其他 30 天；公司置頂 入門 7／其他 15 天）：不足一個單位的碎段不排
+  {
+    const minLen = item.block || 7, short = out.filter(g => g.e - g.s + 1 < minLen);
+    if (short.length) out = out.filter(g => g.e - g.s + 1 >= minLen);
+    // 排不完的總次數一次講清楚：組合不夠，或剩下的天數湊不滿一個單位
+    const placed = out.reduce((n, g) => n + g.e - g.s + 1, 0);
+    if (placed < T) {
+      const why = [];
+      if (C * W.days < T) why.push(`組合不足（目前 ${C} 組，每組最多 ${W.days} 天）`);
+      if (short.length) why.push(`剩下的天數不足 ${minLen} 天一段（${item.name}最少 ${minLen} 天為一個單位）`);
+      warns.unshift(`還有 ${T - placed} 次排不進去：${why.join('，')}。建議增加${item.type === 'work' ? '作品或區域' : '區域'}。`);
+    }
+  }
+  return { segs: out, warns };
 }
 
 // 品牌曝光類：1週 = 1個區域 × 1週；切成 chunks 段，每段輪一組
