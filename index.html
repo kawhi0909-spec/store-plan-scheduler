@@ -118,6 +118,17 @@ table{border-collapse:collapse;width:100%}
 .mgrid thead .sticky{z-index:3;background:var(--navy)}
 .mgrid td.cat{background:var(--ice);font-weight:700;color:var(--ink)}
 .empty{color:var(--muted);text-align:center;padding:40px 0}
+.rev-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px}
+.rev-card{background:var(--ice);border-radius:10px;padding:12px 14px}
+.rev-card .k{font-size:12px;color:var(--muted)}
+.rev-card .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text)}
+.rev-card.ok{background:var(--green-soft)} .rev-card.ok .v{color:var(--green)}
+.rev-card.warn{background:var(--amber-soft)} .rev-card.warn .v{color:var(--amber-ink)}
+.rev-table td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.rev-table td,.rev-table th{min-width:84px;white-space:nowrap}
+.rev-table tr.rev-total td{background:var(--ice);font-weight:700}
+.rev-note{font-size:11px;font-weight:400;color:var(--amber-ink);white-space:normal}
+.rev-pending{color:var(--amber-ink);font-weight:700}
 .mono{font-variant-numeric:tabular-nums}
 .modal-bg{position:fixed;inset:0;background:var(--overlay);display:grid;place-items:center;z-index:50;padding:16px}
 .modal{background:var(--card);color:var(--text);border-radius:12px;box-shadow:var(--shadow);padding:20px;max-width:420px;width:100%}
@@ -191,6 +202,7 @@ table{border-collapse:collapse;width:100%}
     <div class="tabs" id="tabs">
       <button data-tab="detail" class="on">權益明細（可微調）</button>
       <button data-tab="grid">月份總覽</button>
+      <button data-tab="revenue">業績認列</button>
     </div>
     <div id="resultBody"></div>
   </section>
@@ -335,7 +347,7 @@ let state = {
   works: [{ id: uid(), name: '', link: '' }],
   regions: [{ id: uid(), name: '' }],
   opts: { pinMode: 'cont', expoMode: 'even', expoStagger: 'stagger' },
-  entries: [], aiPicks: [], pushPicks: [], genWarns: {}, generated: false, scheduledFor: null,
+  entries: [], aiPicks: [], pushPicks: [], deliver: {}, genWarns: {}, generated: false, scheduledFor: null,
 };
 let dirty = false, tab = 'detail';
 const markDirty = () => { dirty = true; };
@@ -638,7 +650,7 @@ function renderWindow() {
 async function pickPlan(p) {
   if (p === state.plan) return;
   if (state.entries.length && !(await ask(`切換成「${p}」會清除目前的排程，確定嗎？`, '切換方案'))) return;
-  state.plan = p; state.entries = []; state.aiPicks = []; state.pushPicks = []; state.genWarns = {}; state.generated = false; state.scheduledFor = null;
+  state.plan = p; state.entries = []; state.aiPicks = []; state.pushPicks = []; state.deliver = {}; state.genWarns = {}; state.generated = false; state.scheduledFor = null;
   markDirty(); renderBasics(); renderResult();
 }
 function renderWorks() {
@@ -681,7 +693,7 @@ function renderResult() {
   let stale = '';
   const sf = state.scheduledFor;
   if (sf && (sf.start !== state.start || (sf.adStart || sf.start) !== state.adStart)) stale = `<div class="notice warn">合約開始日或廣告開始日已變更（原本排程的廣告開始日是 ${sf.adStart || sf.start}），建議重新按「一鍵自動排程」。</div>`;
-  body.innerHTML = stale + (tab === 'detail' ? detailHTML(W) : gridHTML(W));
+  body.innerHTML = stale + (tab === 'detail' ? detailHTML(W) : tab === 'grid' ? gridHTML(W) : revenueHTML(W));
 }
 
 function detailHTML(W) {
@@ -846,6 +858,125 @@ function monthCells(row, W, withLink) {
   if (row.kind === 'push') { const c = W.months.map(() => ''); pushList(row, W).forEach(x => c[x.mi] = x.text); return c; }
   return null;
 }
+/* ================= 業績認列 ================= */
+// 依簽呈的未稅售價（非早鳥）。置頂 1 次 = 1 天；公司榜單 1 週的金額按 7 天攤；
+// AI環景、開箱文、短影音由業務填交付月份，金額認列在該月。其他權益為贈送，不認列。
+const PRICES = {
+  '入門版': { pinWork: 190, pinCo: 190, ai: Array(3).fill(4970) },
+  '標準版': { pinWork: 190, pinCo: 190, ai: Array(6).fill(2850), rank: 3861 },
+  '加強版': { pinWork: 150, pinCo: 150, ai: Array(12).fill(1000), rank: 1000, unbox: [19547, 19548] },
+  '旗艦版': { pinWork: 40, pinCo: 40, ai: Array(24).fill(494), rank: 329, unbox: [21518, 21518, 21518, 21517], video: [40000, 40000, 40000, 40000] },
+};
+const DELIVER = { ai: { name: 'AI環景作品', unit: '個' }, unbox: { name: '開箱文', unit: '篇' }, video: { name: '短影音', unit: '支' } };
+const money = n => Math.round(n).toLocaleString('en-US');
+const ymKey = ([y, m]) => `${y}-${pad(m + 1)}`;
+// 把小數金額分到各月份，總和四捨五入後各月取整，尾數給小數最大的月份
+function roundMonths(vals) {
+  const target = Math.round(vals.reduce((a, b) => a + b, 0));
+  const out = vals.map(Math.floor);
+  let left = target - out.reduce((a, b) => a + b, 0);
+  vals.map((v, i) => [v - Math.floor(v), i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (left > 0) { out[i]++; left--; } });
+  return out;
+}
+// 依排程逐日認列；超過權益數量的部分不認列
+function dailyRecognition(it, perDay, capDays, W) {
+  const vals = W.months.map(() => 0);
+  let left = capDays;
+  state.entries.filter(e => e.item === it.key).sort((a, b) => a.start.localeCompare(b.start)).forEach(e => {
+    let c = parse(e.start); const en = parse(e.end);
+    while (c <= en && left > 0) {
+      const pe = Math.min(en, monthEnd(c)), d = Math.min(pe - c + 1, left), mi = monthIdx(W, c);
+      if (mi >= 0) vals[mi] += d * perDay;
+      left -= d; c = pe + 1;
+    }
+  });
+  return roundMonths(vals);
+}
+function deliverPicks(k) {
+  const n = (PRICES[state.plan][k] || []).length, cur = state.deliver[k] || [];
+  return Array.from({ length: n }, (_, i) => cur[i] || '');
+}
+function revenueRows(W) {
+  const P = PRICES[state.plan], rows = [];
+  for (const it of schedItems()) {
+    const unit = P[it.key]; if (!unit) continue;
+    const isWeek = it.kind === 'expo';
+    const months = dailyRecognition(it, isWeek ? unit / 7 : unit, isWeek ? it.total * 7 : it.total, W);
+    const contract = unit * it.total, done = months.reduce((a, b) => a + b, 0);
+    rows.push({ name: it.name, unit: `${money(unit)} / ${isWeek ? '週' : '次'}`, qty: `${it.total}${isWeek ? '週' : '次'}`, contract, months, done, pending: contract - done,
+      note: contract - done > 0 ? `還有 ${numStr((contract - done) / unit)} ${isWeek ? '週' : '次'}未排入` : '' });
+  }
+  for (const k of Object.keys(DELIVER)) {
+    const prices = P[k]; if (!prices) continue;
+    const picks = deliverPicks(k), months = W.months.map(() => 0);
+    let missing = 0;
+    picks.forEach((v, i) => { const mi = W.months.findIndex(m => ymKey(m) === v); if (mi >= 0) months[mi] += prices[i]; else missing++; });
+    const contract = prices.reduce((a, b) => a + b, 0), done = months.reduce((a, b) => a + b, 0);
+    const same = prices.every(x => x === prices[0]);
+    rows.push({ name: DELIVER[k].name, unit: same ? `${money(prices[0])} / ${DELIVER[k].unit}` : prices.map(money).join('／'), qty: `${prices.length}${DELIVER[k].unit}`,
+      contract, months, done, pending: contract - done, note: missing ? `${missing} ${DELIVER[k].unit}未填交付月份` : '' });
+  }
+  return rows;
+}
+function revenueHTML(W) {
+  const rows = revenueRows(W), sum = f => rows.reduce((a, r) => a + f(r), 0);
+  const totalMonths = W.months.map((_, i) => sum(r => r.months[i]));
+  const contract = sum(r => r.contract), done = sum(r => r.done), pending = contract - done;
+  const monthOpts = sel => `<option value="">未填</option>` + W.months.map(m => `<option value="${ymKey(m)}" ${ymKey(m) === sel ? 'selected' : ''}>${m[0]}/${m[1] + 1}</option>`).join('');
+  const deliverBlocks = Object.keys(DELIVER).filter(k => PRICES[state.plan][k]).map(k => {
+    const picks = deliverPicks(k), prices = PRICES[state.plan][k], ai = k === 'ai' ? aiList(aiItem()) : null;
+    const cells = picks.map((v, i) => `<label class="ai-slot"><span class="tag wide">${k === 'ai' ? `${i + 1}. ${esc(ai[i])}` : `第${i + 1}${DELIVER[k].unit}`}｜${money(prices[i])}</span><select data-deliver="${k}|${i}">${monthOpts(v)}</select></label>`).join('');
+    return `<div class="item-card"><div class="item-head"><div><h3>${DELIVER[k].name}：交付月份</h3><span class="sub">選了月份，金額就認列在那個月；沒選的算未認列</span></div>
+      <div class="usage">已填 <b>${picks.filter(Boolean).length}</b> / ${picks.length}</div></div><div class="ai-grid">${cells}</div></div>`;
+  }).join('');
+  const head = `<tr><th class="sticky">權益</th><th>單價</th><th>數量</th><th>售價</th>${W.months.map(([y, m]) => `<th>${y}/${m + 1}</th>`).join('')}<th>已認列</th><th>未認列</th></tr>`;
+  const body = rows.map(r => `<tr><td class="sticky">${esc(r.name)}${r.note ? `<br><span class="rev-note">${esc(r.note)}</span>` : ''}</td><td class="num">${r.unit}</td><td class="num">${r.qty}</td><td class="num">${money(r.contract)}</td>
+    ${r.months.map(v => `<td class="num">${v ? money(v) : ''}</td>`).join('')}<td class="num"><b>${money(r.done)}</b></td><td class="num ${r.pending ? 'rev-pending' : ''}">${r.pending ? money(r.pending) : '–'}</td></tr>`).join('');
+  const foot = `<tr class="rev-total"><td class="sticky">合計</td><td></td><td></td><td class="num">${money(contract)}</td>${totalMonths.map(v => `<td class="num">${v ? money(v) : ''}</td>`).join('')}<td class="num">${money(done)}</td><td class="num">${pending ? money(pending) : '–'}</td></tr>`;
+  return `<div class="rev-cards">
+      <div class="rev-card"><div class="k">方案售價（未稅）</div><div class="v">${money(contract)}</div></div>
+      <div class="rev-card ok"><div class="k">依目前排程可認列</div><div class="v">${money(done)}</div></div>
+      <div class="rev-card ${pending ? 'warn' : ''}"><div class="k">未認列（未排入／未填月份）</div><div class="v">${money(pending)}</div></div>
+    </div>
+    <div class="gridwrap rev-wrap"><table class="mgrid rev-table"><thead>${head}</thead><tbody>${body}${foot}</tbody></table></div>
+    <div class="run-row" style="margin:12px 0 4px"><button class="btn primary" data-export-rev>匯出業績認列表</button><span class="hint" style="margin:0">內部使用，不會放進給客戶的排期表。依簽呈未稅售價（非早鳥）計算，贈送權益不認列。</span></div>
+    ${deliverBlocks}`;
+}
+async function exportRevenue() {
+  const W = windowInfo();
+  if (!W || !state.generated) { toast('請先完成排程', 'err'); return; }
+  if (typeof ExcelJS === 'undefined') { toast('匯出 Excel 需要網路連線（載入 Excel 元件失敗），請連上網路後重新整理頁面。', 'err'); return; }
+  const rows = revenueRows(W), wb = new ExcelJS.Workbook(), ws = wb.addWorksheet('業績認列');
+  const nCol = 4 + W.months.length + 2, thin = { style: 'thin', color: { argb: 'FFBFC5CE' } };
+  const border = { top: thin, left: thin, bottom: thin, right: thin };
+  ws.getColumn(1).width = 18; ws.getColumn(2).width = 14; ws.getColumn(3).width = 10;
+  for (let c = 4; c <= nCol; c++) ws.getColumn(c).width = 12;
+  const info = [['公司名稱', state.company], ['方案', state.plan], ['負責業務', state.sales],
+    ['合約期間', `${fmt(W.cs)}~${fmt(W.e)}`], ['廣告期間', `${fmt(W.s)}~${fmt(W.e)}`], ['計算依據', '簽呈未稅售價（非早鳥）；置頂 1 次 = 1 天、公司榜單每週金額按天攤；贈送權益不認列']];
+  ws.getCell(1, 1).value = '業績認列表（內部使用）'; ws.getCell(1, 1).font = { bold: true, size: 14 };
+  info.forEach(([k, v], i) => { ws.getCell(i + 2, 1).value = k; ws.getCell(i + 2, 1).font = { bold: true }; ws.getCell(i + 2, 2).value = v; });
+  const hr = info.length + 3;
+  const head = ['權益', '單價', '數量', '售價', ...W.months.map(([y, m]) => `${y}/${m + 1}`), '已認列', '未認列'];
+  head.forEach((h, i) => { const c = ws.getCell(hr, i + 1); c.value = h; c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E2A4C' } }; c.alignment = { horizontal: 'center' }; c.border = border; });
+  const put = (r, vals, bold) => vals.forEach((v, i) => { const c = ws.getCell(r, i + 1); c.value = v; c.border = border;
+    if (typeof v === 'number') c.numFmt = '#,##0'; if (bold) c.font = { bold: true }; });
+  rows.forEach((x, i) => put(hr + 1 + i, [x.name + (x.note ? `（${x.note}）` : ''), x.unit, x.qty, x.contract, ...x.months.map(v => v || null), x.done, x.pending]));
+  const tr = hr + 1 + rows.length, sum = f => rows.reduce((a, x) => a + f(x), 0);
+  put(tr, ['合計', '', '', sum(x => x.contract), ...W.months.map((_, i) => sum(x => x.months[i]) || null), sum(x => x.done), sum(x => x.pending)], true);
+  // 交付明細
+  let r = tr + 2;
+  Object.keys(DELIVER).filter(k => PRICES[state.plan][k]).forEach(k => {
+    const picks = deliverPicks(k), prices = PRICES[state.plan][k], ai = k === 'ai' ? aiList(aiItem()) : null;
+    ws.getCell(r, 1).value = `${DELIVER[k].name} 交付明細`; ws.getCell(r, 1).font = { bold: true }; r++;
+    picks.forEach((v, i) => { put(r, [k === 'ai' ? `${i + 1}. ${ai[i]}` : `第${i + 1}${DELIVER[k].unit}`, prices[i], v ? v.replace('-', '/') : '未填']); r++; });
+    r++;
+  });
+  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: hr }];
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `${safeName(state.company)}－業績認列－${state.plan}.xlsx`);
+}
+
 function gridHTML(W) {
   const head = `<tr><th class="sticky">權益</th><th>數量</th>${W.months.map(([y, m]) => `<th>${y}/${m + 1}</th>`).join('')}</tr>`;
   const body = planGroups().map(g => {
@@ -927,6 +1058,11 @@ document.addEventListener('click', e => {
 $('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) { tab = b.dataset.tab; renderResult(); } };
 
 $('#resultBody').addEventListener('change', e => {
+  if (e.target.dataset.deliver) {
+    const [k, i] = e.target.dataset.deliver.split('|');
+    (state.deliver[k] = state.deliver[k] || [])[+i] = e.target.value;
+    markDirty(); renderResult(); return;
+  }
   if (e.target.dataset.push !== undefined) { state.pushPicks[+e.target.dataset.push] = e.target.value; markDirty(); renderResult(); return; }
   if (e.target.dataset.ai !== undefined) { state.aiPicks[+e.target.dataset.ai] = e.target.value; markDirty(); renderResult(); return; }
   const t = e.target, id = t.dataset.eid; if (!id) return;
@@ -936,6 +1072,7 @@ $('#resultBody').addEventListener('change', e => {
   markDirty(); renderResult();
 });
 $('#resultBody').addEventListener('click', e => {
+  if (e.target.closest('[data-export-rev]')) { exportRevenue(); return; }
   if (e.target.closest('[data-demo]')) {
     Object.assign(state, {
       company: '範例設計（示範資料）', sales: '業務姓名', plan: '標準版', start: fmt(parse(new Date().toISOString().slice(0, 10))), adStart: fmt(parse(new Date().toISOString().slice(0, 10))),
@@ -999,6 +1136,7 @@ $('#fileLoad').onchange = async e => {
     if (data.app !== 'store-plan-scheduler' || !data.state || !PLANS[data.state.plan]) throw new Error('格式不符');
     state = { ...state, ...data.state, opts: { ...state.opts, ...data.state.opts } };
     if (!state.adStart) state.adStart = state.start;
+    if (!state.deliver) state.deliver = {};
     dirty = false; $('#runMsg').innerHTML = '';
     renderAll();
   } catch (err) { toast('讀檔失敗：這不是本工具存的檔案（' + err.message + '）', 'err'); }
